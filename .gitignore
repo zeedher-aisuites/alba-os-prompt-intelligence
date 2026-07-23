@@ -18,9 +18,12 @@ __pycache__/
 .ruff_cache/
 htmlcov/
 
+# PostgreSQL uses a named Docker volume, but ignore local bind-mount fallbacks.
+.postgres-data/
+postgres-data/
+
 # Editors and operating systems
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
-

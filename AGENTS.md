@@ -6,6 +6,10 @@ These rules apply to every change in this repository:
 - LangGraph is reserved for stateful workflows with branching, review, or resumption.
 - PostgreSQL is the source of truth.
 - The pgvector index is derived and must remain rebuildable.
+- Schema changes are applied through Alembic; application startup must not call `create_all`.
+- PostgreSQL- or pgvector-specific tests are run against PostgreSQL, never substituted with SQLite.
+- Destructive integration tests must pass both the reserved test-database name and server marker.
+- Async ORM relationships must not trigger implicit lazy-loading I/O.
 - External providers are accessed through project-owned adapter interfaces.
 - Every LLM output crossing an application boundary is validated.
 - Dependencies are not added without a documented reason.
@@ -18,5 +22,5 @@ These rules apply to every change in this repository:
   - `uv run ruff check .`
   - `uv run ruff format --check .`
   - `uv run pyright`
-  - `uv run pytest`
-
+  - `uv run pytest -m "not e2e"`
+  - run relevant E2E tests explicitly when external-service behavior changes
