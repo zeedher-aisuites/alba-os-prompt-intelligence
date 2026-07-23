@@ -5,8 +5,12 @@ description = "Local prompt intelligence for evidence-backed multimodal generati
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "alembic>=1.16,<2",
+    "asyncpg>=0.30,<1",
     "fastapi[standard-no-fastapi-cloud-cli]>=0.116,<1.0",
+    "pgvector>=0.4,<1",
     "pydantic-settings>=2.10,<3.0",
+    "sqlalchemy[asyncio]>=2.0.41,<3",
     "uvicorn[standard]>=0.35,<1.0",
 ]
 
@@ -27,8 +31,17 @@ addopts = [
     "--strict-config",
     "--strict-markers",
     "-ra",
+    "-p",
+    "no:cacheprovider",
+    "-m",
+    "not e2e",
 ]
 asyncio_mode = "auto"
+markers = [
+    "docker: requires control of the Docker Engine",
+    "e2e: restarts or coordinates external services and is excluded by default",
+    "postgres: requires the real PostgreSQL/pgvector service",
+]
 testpaths = ["tests"]
 
 [tool.ruff]

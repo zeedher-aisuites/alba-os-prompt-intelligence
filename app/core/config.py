@@ -5,10 +5,12 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, PostgresDsn, Secret
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 EnvironmentName = Literal["development", "test", "production"]
+DEFAULT_DATABASE_URL = "postgresql+asyncpg://alba:alba_dev@127.0.0.1:5432/alba_os"
+DEFAULT_TEST_DATABASE_URL = "postgresql+asyncpg://alba:alba_dev@127.0.0.1:5432/alba_os_test"
 
 
 class Settings(BaseSettings):
@@ -27,6 +29,13 @@ class Settings(BaseSettings):
     )
     environment: EnvironmentName = "development"
     debug: bool = False
+    database_url: Secret[PostgresDsn] = Secret(PostgresDsn(DEFAULT_DATABASE_URL))
+    test_database_url: Secret[PostgresDsn] = Secret(PostgresDsn(DEFAULT_TEST_DATABASE_URL))
+    database_echo: bool = False
+    database_pool_size: int = Field(default=5, ge=1, le=50)
+    database_max_overflow: int = Field(default=10, ge=0, le=100)
+    database_pool_timeout: float = Field(default=30.0, gt=0, le=300)
+    database_pool_recycle: int = Field(default=1800, ge=1)
 
 
 @lru_cache
