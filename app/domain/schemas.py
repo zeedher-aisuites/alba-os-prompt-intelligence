@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import (
@@ -145,6 +145,10 @@ class PromptExampleRead(ReadModel):
     image_sha256: str | None
     tags: list[str]
     embedding_text: str
+    embedding_provider: str | None
+    embedding_model: str | None
+    embedding_source_hash: str | None
+    embedded_at: UtcDatetime | None
     created_at: UtcDatetime
     updated_at: UtcDatetime
 
@@ -225,3 +229,71 @@ class GenerationRunRead(ReadModel):
     trace_id: str | None
     created_at: UtcDatetime
     completed_at: UtcDatetime | None
+
+
+class EmbeddingIndexingReport(BaseModel):
+    """Observable result of one embedding indexing operation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    provider: str
+    model: str
+    dimensions: int = Field(ge=1)
+    selected: int = Field(ge=0)
+    stale: int = Field(ge=0)
+    embedded: int = Field(ge=0)
+    would_embed: int = Field(ge=0)
+    skipped: int = Field(ge=0)
+    batches: int = Field(ge=0)
+    dry_run: bool
+    forced: bool
+
+
+class RetrievalQuery(BaseModel):
+    """Validated exact-retrieval request."""
+
+    model_config = ConfigDict(frozen=True)
+
+    text: NonEmptyText
+    project_id: UUID | None = None
+    query_type: QueryType | None = None
+    target_platform: ShortLabel | None = None
+    minimum_similarity: float | None = Field(default=None, ge=-1, le=1)
+    limit: int = Field(default=5, ge=1, le=100)
+
+
+class RetrievedPromptExample(BaseModel):
+    """Prompt evidence returned without its raw vector."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    project_id: UUID
+    base_prompt: str
+    expected_result: str
+    generated_image_description: str | None
+    generation_method: str
+    target_platform: str
+    query_type: QueryType
+    status: GenerationStatus
+    review_notes: str | None
+    rejection_reason: str | None
+    quality_score: Decimal | None
+    tags: list[str]
+    similarity: float = Field(ge=-1, le=1)
+
+
+class RetrievalResultSet(BaseModel):
+    """Results plus explicit empty-evidence metadata."""
+
+    model_config = ConfigDict(frozen=True)
+
+    retrieval_kind: Literal["approved", "failure"]
+    provider: str
+    model: str
+    query_text: str
+    requested_limit: int = Field(ge=1)
+    applied_limit: int = Field(ge=1)
+    evidence_count: int = Field(ge=0)
+    insufficient_evidence: bool
+    items: list[RetrievedPromptExample]
