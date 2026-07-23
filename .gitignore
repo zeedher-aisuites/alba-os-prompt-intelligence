@@ -1,0 +1,26 @@
+# Local configuration
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.python-version.local
+.venv/
+
+# Local uv bootstrap used when uv/Python 3.12 are not installed globally
+.uv-bootstrap/
+.uv-cache/
+.uv-python/
+
+# Quality tools
+.coverage
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+

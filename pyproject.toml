@@ -1,0 +1,60 @@
+[project]
+name = "alba-os-prompt-intelligence"
+version = "0.1.0"
+description = "Local prompt intelligence for evidence-backed multimodal generation recommendations."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi[standard-no-fastapi-cloud-cli]>=0.116,<1.0",
+    "pydantic-settings>=2.10,<3.0",
+    "uvicorn[standard]>=0.35,<1.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28,<1.0",
+    "pyright[nodejs]>=1.1.403,<2.0",
+    "pytest>=8.4,<9.0",
+    "pytest-asyncio>=1.1,<2.0",
+    "ruff>=0.12,<1.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+addopts = [
+    "--strict-config",
+    "--strict-markers",
+    "-ra",
+]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["app", "tests"]
+target-version = "py312"
+
+[tool.ruff.format]
+docstring-code-format = true
+quote-style = "double"
+
+[tool.ruff.lint]
+select = [
+    "ASYNC",
+    "B",
+    "E",
+    "F",
+    "I",
+    "RUF",
+    "SIM",
+    "UP",
+]
+
+[tool.pyright]
+include = ["app", "tests"]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+venv = ".venv"
+venvPath = "."
