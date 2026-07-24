@@ -9,7 +9,10 @@ dependencies = [
     "asyncpg>=0.30,<1",
     "fastapi[standard-no-fastapi-cloud-cli]>=0.116,<1.0",
     "httpx>=0.28,<1.0",
+    "langgraph>=1.2,<2",
+    "langgraph-checkpoint-postgres>=3.1,<4",
     "pgvector>=0.4,<1",
+    "psycopg[binary]>=3.2,<4",
     "pydantic-settings>=2.10,<3.0",
     "sqlalchemy[asyncio]>=2.0.41,<3",
     "uvicorn[standard]>=0.35,<1.0",
@@ -40,7 +43,7 @@ asyncio_mode = "auto"
 markers = [
     "docker: requires control of the Docker Engine",
     "e2e: restarts or coordinates external services and is excluded by default",
-    "ollama: requires a real local Ollama service and pre-pulled embedding model",
+    "ollama: requires local Ollama and the explicitly pre-pulled model under test",
     "postgres: requires the real PostgreSQL/pgvector service",
 ]
 testpaths = ["tests"]

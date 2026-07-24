@@ -48,6 +48,8 @@ class FakeRecommendationProvider:
             )
         if context.failure_evidence:
             prompt_parts.append("Avoid the documented rejected failure patterns.")
+        if context.revision_feedback is not None:
+            prompt_parts.append("Apply human revision feedback: " + context.revision_feedback + ".")
 
         rationale = ["The recommendation preserves the explicit brief and mandatory constraints."]
         if context.positive_evidence:
@@ -56,6 +58,8 @@ class FakeRecommendationProvider:
             rationale.append("No approved project precedent was available.")
         if context.failure_evidence:
             rationale.append("Rejected evidence was converted into preventive warnings.")
+        if context.revision_feedback is not None:
+            rationale.append("The single human revision request was incorporated.")
 
         warnings = [
             FailureWarning(

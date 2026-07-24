@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncGenerator, Generator
+import sys
+from collections.abc import AsyncGenerator, Callable, Generator
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,17 @@ from pydantic import PostgresDsn
 from sqlalchemy import text
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+
+
+def pytest_asyncio_loop_factories(
+    config: pytest.Config,
+    item: pytest.Item,
+) -> dict[str, Callable[[], asyncio.AbstractEventLoop]]:
+    """Use the selector loop required by Psycopg async on Windows."""
+    del config, item
+    if sys.platform == "win32":
+        return {"selector": asyncio.SelectorEventLoop}
+    return {"default": asyncio.new_event_loop}
 
 
 def alembic_config(database_url: PostgresDsn) -> Config:
@@ -63,6 +75,27 @@ async def truncate_application_tables(database: Database) -> None:
         await connection.execute(
             text("TRUNCATE TABLE human_reviews, generation_runs, prompt_examples, projects CASCADE")
         )
+        checkpoint_table = await connection.scalar(
+            text(
+                """
+                SELECT to_regclass(
+                    'alba_workflow_checkpoints.checkpoints'
+                )
+                """
+            )
+        )
+        if checkpoint_table is not None:
+            await connection.execute(
+                text(
+                    """
+                    TRUNCATE TABLE
+                        alba_workflow_checkpoints.checkpoint_writes,
+                        alba_workflow_checkpoints.checkpoint_blobs,
+                        alba_workflow_checkpoints.checkpoints
+                    CASCADE
+                    """
+                )
+            )
 
 
 @pytest_asyncio.fixture
