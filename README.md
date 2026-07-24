@@ -8,12 +8,13 @@ analyze images.
 
 ## Current scope
 
-Stage 2 adds deterministic embedding source documents, a project-owned provider
-interface, Ollama and fake adapters, idempotent vector backfill, and exact
-positive/failure retrieval through pgvector. PostgreSQL remains the source of
-truth; vectors and their metadata are derived and rebuildable. Chat LLMs,
-prompt generation, LangGraph workflows, the HTML UI, ANN indexes, and telemetry
-remain later reviewable stages.
+Stage 3 adds one structured prompt-recommendation use case over the Stage 2
+memory. It retrieves approved precedents and rejected failure patterns with one
+query embedding, builds bounded untrusted context, validates local model JSON,
+checks every evidence reference, and persists the result as a `GenerationRun`.
+PostgreSQL remains the source of truth. LangGraph workflows, agents, the HTML
+UI, image generation, ANN indexes, and telemetry remain later reviewable
+stages.
 
 ```text
 Browser / API client
@@ -42,6 +43,13 @@ EmbeddingTextBuilder --> EmbeddingProvider
 RetrievalService --> exact cosine distance in PostgreSQL
                     +-- approved positive evidence
                     `-- rejected failure patterns
+
+RecommendationService
+        +-- one query embedding
+        +-- bounded approved/rejected context
+        +-- Fake or Ollama /api/chat provider
+        +-- Pydantic + evidence-ID validation
+        `-- completed/failed GenerationRun
 ```
 
 ## Requirements
@@ -51,6 +59,8 @@ RetrievalService --> exact cosine distance in PostgreSQL
 - Docker Desktop or Docker Engine with Compose
 - Ollama with the `embeddinggemma:300m` model for real Stage 2 backfill and
   acceptance evaluation
+- Optional Ollama chat model `qwen2.5:3b` for real Stage 3 validation. The fake
+  recommendation provider requires no chat model.
 
 ## Setup
 
@@ -219,6 +229,126 @@ latency, separately for positive and failure retrieval. Fake-provider metrics
 are diagnostic only and must not be reported as EmbeddingGemma acceptance
 metrics.
 
+## Structured prompt recommendations
+
+EmbeddingGemma remains an embedding-only model and is never used for chat.
+Stage 3 configures `qwen2.5:3b` as the separate local chat model. Automated
+tests never download it. Install it explicitly only when real Ollama validation
+is desired:
+
+```bash
+ollama pull qwen2.5:3b
+ollama list
+```
+
+Generate a deterministic recommendation while the chat model is absent:
+
+```powershell
+uv run python -m scripts.recommend_prompt `
+  --project retrieval-evaluation-lab `
+  --query-type ai_influencer `
+  --brief "Mantén el rostro, vestido cobalt y peinado del personaje." `
+  --constraint "Preserve the same face" `
+  --constraint "Keep the approved outfit" `
+  --provider fake
+```
+
+Use `--provider ollama` only after the configured chat model is installed. The
+CLI still uses the configured EmbeddingGemma adapter for the single retrieval
+embedding. It prints the run ID, structured recommendation, bounded evidence,
+warnings, confidence, human-review decision, provider/model, and latency. It
+never prints vectors or credentials.
+
+The context builder assigns stable request-local IDs (`C1`, `C2`, and so on) to
+constraints. The provider must account for every ID exactly once in
+`covered_constraint_ids` or `unmet_constraint_ids`. Positive precedent must be
+cited explicitly in `used_positive_evidence_ids`, while each rejected example
+used as a warning is represented as `{evidence_id, warning}`. Unknown IDs,
+cross-status evidence, duplicate accounting, overlap, and omitted constraints
+are typed validation errors; references are never silently added by the
+application.
+
+The builder uses the brief and constraints as creative task data while treating
+any embedded meta-instruction as untrusted. Retrieved text is also untrusted
+JSON data and cannot redefine the system. Approved and rejected evidence are
+separated and ordered by similarity with ID tie-breaking. The default budget is
+18,000 characters:
+
+- brief is limited to 4,000 characters;
+- each of at most 20 constraints is limited to 500 characters;
+- each evidence field is visibly truncated at 1,200 characters;
+- only lowest-ranked evidence may be omitted to fit the total budget;
+- brief and constraints are never truncated silently and instead cause a
+  validation/context-budget error.
+
+Run the fourteen-brief objective evaluation:
+
+```bash
+uv run python -m scripts.evaluate_recommendations \
+  --project retrieval-evaluation-lab \
+  --provider fake
+```
+
+It measures schema validity, evidence-reference validity, fabricated-reference
+rate, constraint coverage, human-review decisions, no-evidence handling,
+successful run persistence, structured-output repair attempts, and p50/p95
+latency. Creative usefulness, tone, and visual quality still require human
+evaluation; no second LLM acts as judge.
+
+The application computes the public `confidence`; the model's
+`provider_confidence` is only one bounded input and is not presented as a
+statistical probability. The heuristic uses the best cited similarity, number
+of cited approved examples, constraint coverage, unmet constraints, missing
+citations or warnings, and whether one repair was required. With no evidence,
+the application forces human review, empty evidence references, an explicit
+missing-evidence statement, and `confidence <= 0.30`. Retrieved approved
+evidence without a citation is treated as ungrounded, forces human review, and
+caps confidence at `0.35`. The provider first spends the one shared repair
+attempt asking for a valid citation; only a second omission is accepted through
+that explicitly ungrounded path.
+
+The Ollama adapter sends only the eight required draft fields and dynamically
+restricts evidence and constraint IDs to those in the bounded context. Empty
+allowed-ID sets are constrained to `[]`, the prompt is constrained to a
+non-empty string, and no-evidence provider confidence is constrained to
+`0.00-0.30`. Because Ollama 0.32.3 does not enforce the array minimum reliably,
+its wire schema requests one non-empty rationale string; the adapter maps that
+explicit field to the public one-item rationale list. Constraint accounting is
+also represented on the wire as one required map from every `C` ID to
+`covered|unmet`, making overlap impossible before it is converted to the two
+public lists. Full Pydantic and grounding validation still run afterward. The
+adapter does not accept an empty rationale or incomplete JSON. Schema and
+grounding failures share one repair budget: at most one targeted retry.
+
+Final local results from `Qwen 2.5 3B local, synthetic dataset of 14 briefs`
+are shown below. They are a reproducible MVP diagnostic, not a universal model
+benchmark or a substitute for independent creative review.
+
+| Metric | Fake provider | Qwen 2.5 3B local |
+| --- | ---: | ---: |
+| Completed / total | 14 / 14 | 14 / 14 |
+| Schema validity | 100% | 100% |
+| Constraint accounting | 100% | 100% |
+| Covered constraints | 100% | 100% |
+| Positive evidence citation | 100% | 100% |
+| Valid rejected-warning citation | 100% | 100% |
+| Fabricated evidence IDs | 0% | 0% |
+| Fabricated constraint IDs | 0% | 0% |
+| No-evidence handling | 100% | 100% |
+| Successful run persistence | 100% | 100% |
+| Repair attempts | 0 | 0 |
+| Confidence mean (range) | 0.6940 (0.25-0.82) | 0.5998 (0.10-0.8589) |
+| Latency p50 | 257 ms | 8,247 ms |
+| Latency p95 | 2,095.75 ms | 8,779.45 ms |
+
+The original exhausted-repair case combined a missing positive citation with
+an empty rationale on the retry. The explicit non-empty wire rationale removed
+that structural failure. A later audit found that a degradable missing-citation
+error could be raised before a covered/unmet overlap. The final wire accounting
+map makes overlap impossible and the application now validates every hard
+grounding invariant before considering safe degradation. The final Qwen run
+needed no repair. The fake p95 includes one 5,479 ms embedding outlier.
+
 ## Run locally
 
 ```bash
@@ -283,6 +413,12 @@ uv run pytest tests/unit
 | `ALBA_EMBEDDING_TIMEOUT` | `30` | Provider request timeout in seconds |
 | `ALBA_EMBEDDING_BATCH_SIZE` | `16` | Default document batch size |
 | `ALBA_RETRIEVAL_MAX_LIMIT` | `20` | Maximum evidence rows returned |
+| `ALBA_RECOMMENDATION_MODEL` | `qwen2.5:3b` | Exact local chat model identifier |
+| `ALBA_RECOMMENDATION_TIMEOUT` | `60` | Local chat request timeout in seconds |
+| `ALBA_RECOMMENDATION_CONTEXT_MAX_CHARACTERS` | `18000` | Total bounded context budget |
+| `ALBA_RECOMMENDATION_EVIDENCE_FIELD_MAX_CHARACTERS` | `1200` | Visible per-evidence truncation limit |
+| `ALBA_RECOMMENDATION_MAX_OUTPUT_TOKENS` | `1200` | Ollama structured-output token ceiling |
+| `ALBA_RECOMMENDATION_MAX_REPAIR_ATTEMPTS` | `1` | Maximum schema-repair retry count |
 | `ALBA_POSTGRES_USER` | `alba` | Compose development user |
 | `ALBA_POSTGRES_PASSWORD` | `alba_dev` | Compose-only development password |
 | `ALBA_POSTGRES_DB` | `alba_os` | Compose database |
@@ -302,7 +438,7 @@ Compose values change, update both database URLs consistently.
 - `pgvector` maps PostgreSQL's vector type without generating or searching
   embeddings itself.
 - `httpx` is a runtime dependency because the project-owned Ollama adapter
-  calls the local `/api/embed` endpoint asynchronously.
+  calls local `/api/embed` and `/api/chat` endpoints asynchronously.
 
 ## Persistence design
 
@@ -327,6 +463,13 @@ Compose values change, update both database URLs consistently.
   writes bypass the indexing service.
 - Retrieval uses exact cosine distance first. No HNSW or IVFFlat index exists
   yet; an ANN index requires measured scale and recall evidence.
+- `GenerationRunRepository` flushes but never commits. Recommendation run
+  creation, evidence reads, completion, and failure updates use separate short
+  transactions. Embedding and chat HTTP calls happen with no PostgreSQL
+  transaction open.
+- Provider-authored evidence IDs must be subsets of the bounded context.
+  Provider/model columns are stamped by the application, not trusted from
+  model-authored JSON.
 
 The Stage 2 CLI deliberately keeps its caller-owned PostgreSQL transaction open
 while each local Ollama batch is generated. That provides all-or-nothing
@@ -339,7 +482,9 @@ row could change between generation and persistence.
 
 Persistence and retrieval decisions are recorded in
 `docs/adr/0001-postgresql-pgvector.md` and
-`docs/adr/0002-embeddinggemma-exact-retrieval.md`.
+`docs/adr/0002-embeddinggemma-exact-retrieval.md`. Structured recommendation
+decisions are recorded in
+`docs/adr/0003-structured-local-recommendation.md`.
 
 ## Rebuild the database
 
@@ -370,11 +515,13 @@ after verifying no remaining vector columns depend on it.
 ## Limitations
 
 Embedding input is currently one canonical document per example. The Ollama
-request disables silent truncation, so an input beyond the model context fails
-rather than receiving an embedding for undisclosed partial text. There is no
-chunking, reranking, hybrid keyword search, ANN index, HTTP retrieval endpoint,
-RAG generation, chat LLM, LangChain agent, LangGraph workflow, image analysis,
-HTML UI, or telemetry. HTTP CRUD also remains absent.
+embedding request disables silent truncation, so an input beyond the model
+context fails rather than receiving an embedding for undisclosed partial text.
+Recommendation is one bounded call, not a factual oracle or autonomous agent.
+There is no chunking, reranking, hybrid keyword search, ANN index, HTTP
+recommendation endpoint, RAG answer generation, LangChain agent, LangGraph
+workflow, image generation or analysis, HTML UI, or telemetry. HTTP CRUD also
+remains absent.
 
 Changing model or dimension requires a new column/migration, complete
 regeneration from `embedding_text`, a new index when applicable, retrieval

@@ -231,6 +231,25 @@ class GenerationRunRead(ReadModel):
     completed_at: UtcDatetime | None
 
 
+class GenerationRunComplete(BaseModel):
+    """Validated terminal data for a successful generation run."""
+
+    model_config = ConfigDict(frozen=True)
+
+    prompt_recommendation: dict[str, JsonValue]
+    provider_parameters: dict[str, JsonValue]
+    latency_ms: NonNegativeLatency
+
+
+class GenerationRunFail(BaseModel):
+    """Validated terminal data for a failed generation run."""
+
+    model_config = ConfigDict(frozen=True)
+
+    error_code: ShortLabel
+    latency_ms: NonNegativeLatency
+
+
 class EmbeddingIndexingReport(BaseModel):
     """Observable result of one embedding indexing operation."""
 

@@ -37,10 +37,9 @@ class RetrievalService:
         query: RetrievalQuery,
     ) -> RetrievalResultSet:
         """Retrieve only approved positive evidence."""
-        return await self._search(
+        return await self.search_approved_examples_by_vector(
             query,
-            status=GenerationStatus.APPROVED,
-            retrieval_kind="approved",
+            await self._provider.embed_query(query.text),
         )
 
     async def search_failure_patterns(
@@ -48,8 +47,33 @@ class RetrievalService:
         query: RetrievalQuery,
     ) -> RetrievalResultSet:
         """Retrieve only rejected counterexamples."""
+        return await self.search_failure_patterns_by_vector(
+            query,
+            await self._provider.embed_query(query.text),
+        )
+
+    async def search_approved_examples_by_vector(
+        self,
+        query: RetrievalQuery,
+        query_vector: list[float],
+    ) -> RetrievalResultSet:
+        """Retrieve approved evidence using a caller-supplied query vector."""
         return await self._search(
             query,
+            query_vector=query_vector,
+            status=GenerationStatus.APPROVED,
+            retrieval_kind="approved",
+        )
+
+    async def search_failure_patterns_by_vector(
+        self,
+        query: RetrievalQuery,
+        query_vector: list[float],
+    ) -> RetrievalResultSet:
+        """Retrieve rejected evidence using the same caller-supplied vector."""
+        return await self._search(
+            query,
+            query_vector=query_vector,
             status=GenerationStatus.REJECTED,
             retrieval_kind="failure",
         )
@@ -58,10 +82,10 @@ class RetrievalService:
         self,
         query: RetrievalQuery,
         *,
+        query_vector: list[float],
         status: GenerationStatus,
         retrieval_kind: Literal["approved", "failure"],
     ) -> RetrievalResultSet:
-        query_vector = await self._provider.embed_query(query.text)
         applied_limit = min(query.limit, self._maximum_limit)
         rows = await self._repository.search_similar(
             query_vector,

@@ -66,3 +66,18 @@ class DatabaseUnavailableError(AlbaError):
                 retryable=True,
             )
         )
+
+
+class InvalidRunTransitionError(AlbaError):
+    """Raised when a generation run lifecycle transition is not allowed."""
+
+    def __init__(self, identifier: UUID | str, current: str, target: str) -> None:
+        super().__init__(
+            ErrorDetail(
+                error_code="INVALID_RUN_TRANSITION",
+                message=(
+                    f"GenerationRun '{identifier}' cannot transition from "
+                    f"'{current}' to '{target}'."
+                ),
+            )
+        )

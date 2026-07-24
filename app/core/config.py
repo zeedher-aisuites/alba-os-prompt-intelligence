@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     embedding_timeout: float = Field(default=30.0, gt=0, le=300)
     embedding_batch_size: int = Field(default=16, ge=1, le=256)
     retrieval_max_limit: int = Field(default=20, ge=1, le=100)
+    recommendation_model: str = Field(default="qwen2.5:3b", min_length=1, max_length=100)
+    recommendation_timeout: float = Field(default=60.0, gt=0, le=600)
+    recommendation_context_max_characters: int = Field(default=18_000, ge=4_000, le=100_000)
+    recommendation_evidence_field_max_characters: int = Field(default=1_200, ge=200, le=8_000)
+    recommendation_max_output_tokens: int = Field(default=1_200, ge=200, le=8_000)
+    recommendation_max_repair_attempts: int = Field(default=1, ge=0, le=1)
 
 
 @lru_cache

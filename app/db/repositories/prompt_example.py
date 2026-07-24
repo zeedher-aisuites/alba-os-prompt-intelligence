@@ -111,7 +111,7 @@ class PromptExampleRepository:
                 PromptExample.embedding.is_not(None),
                 PromptExample.status == status,
             )
-            .order_by(distance.asc())
+            .order_by(distance.asc(), PromptExample.id.asc())
             .limit(limit)
         )
         if project_id is not None:
