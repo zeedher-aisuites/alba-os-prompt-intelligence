@@ -31,6 +31,15 @@ Slug = Annotated[
 ]
 NonEmptyText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 ShortLabel = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+WorkflowThreadId = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+    ),
+]
 Tag = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
 Score = Annotated[Decimal, Field(ge=0, le=1, max_digits=4, decimal_places=3)]
 NonNegativeCost = Annotated[Decimal, Field(ge=0, max_digits=12, decimal_places=4)]
@@ -208,6 +217,7 @@ class GenerationRunCreate(BaseModel):
     latency_ms: NonNegativeLatency | None = None
     error_code: str | None = None
     trace_id: str | None = None
+    workflow_thread_id: WorkflowThreadId | None = None
     completed_at: UtcDatetime | None = None
 
 
@@ -227,12 +237,23 @@ class GenerationRunRead(ReadModel):
     latency_ms: int | None
     error_code: str | None
     trace_id: str | None
+    workflow_thread_id: str | None
     created_at: UtcDatetime
     completed_at: UtcDatetime | None
 
 
 class GenerationRunComplete(BaseModel):
     """Validated terminal data for a successful generation run."""
+
+    model_config = ConfigDict(frozen=True)
+
+    prompt_recommendation: dict[str, JsonValue]
+    provider_parameters: dict[str, JsonValue]
+    latency_ms: NonNegativeLatency
+
+
+class GenerationRunProgress(BaseModel):
+    """Validated data saved while a durable workflow waits for a human."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -248,6 +269,8 @@ class GenerationRunFail(BaseModel):
 
     error_code: ShortLabel
     latency_ms: NonNegativeLatency
+    prompt_recommendation: dict[str, JsonValue] | None = None
+    provider_parameters: dict[str, JsonValue] | None = None
 
 
 class EmbeddingIndexingReport(BaseModel):

@@ -81,3 +81,15 @@ class InvalidRunTransitionError(AlbaError):
                 ),
             )
         )
+
+
+class DuplicateWorkflowThreadError(AlbaError):
+    """Raised when a durable workflow thread already belongs to another workflow."""
+
+    def __init__(self, thread_id: str) -> None:
+        super().__init__(
+            ErrorDetail(
+                error_code="WORKFLOW_THREAD_EXISTS",
+                message=f"Workflow thread '{thread_id}' already exists.",
+            )
+        )

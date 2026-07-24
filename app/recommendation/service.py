@@ -66,40 +66,33 @@ class RecommendationService:
         self._context_builder = context_builder or RecommendationContextBuilder()
         self._maximum_retrieval_limit = maximum_retrieval_limit
 
+    @property
+    def provider_name(self) -> str:
+        """Return the application-selected recommendation provider."""
+        return self._recommendation_provider.provider_name
+
+    @property
+    def model_name(self) -> str:
+        """Return the application-selected recommendation model."""
+        return self._recommendation_provider.model_name
+
+    @property
+    def embedding_provider_name(self) -> str:
+        """Return the embedding adapter name used for retrieval."""
+        return self._embedding_provider.provider_name
+
+    @property
+    def embedding_model_name(self) -> str:
+        """Return the exact embedding model used for retrieval."""
+        return self._embedding_provider.model_name
+
     async def recommend(self, request: RecommendationRequest) -> RecommendationResult:
         """Run one recommendation without holding PostgreSQL open during HTTP."""
         started = perf_counter()
         run_id = await self._start_run(request)
         try:
-            retrieval_text = self._retrieval_text(request)
-            query_vector = await self._embedding_provider.embed_query(retrieval_text)
-            positive, failures = await self._retrieve(
-                request,
-                retrieval_text=retrieval_text,
-                query_vector=query_vector,
-            )
-            context = self._context_builder.build(
-                request,
-                positive_evidence=positive,
-                failure_evidence=failures,
-            )
-            repairs_before = self._recommendation_provider.repair_attempts_used
-            draft = await self._recommendation_provider.generate_recommendation(
-                context,
-                validate=lambda candidate: validate_draft_grounding(
-                    candidate,
-                    context,
-                    require_positive_citation=True,
-                ),
-            )
-            repairs_used = self._recommendation_provider.repair_attempts_used - repairs_before
-            recommendation = finalize_recommendation(
-                draft,
-                context,
-                provider_name=self._recommendation_provider.provider_name,
-                model_name=self._recommendation_provider.model_name,
-                repair_attempts_used=repairs_used,
-            )
+            context = await self.retrieve_context(request)
+            recommendation = await self.generate_from_context(context)
             latency_ms = self._elapsed_ms(started)
             await self._complete_run(
                 run_id,
@@ -123,6 +116,61 @@ class RecommendationService:
                 latency_ms=self._elapsed_ms(started),
             )
             raise
+
+    async def retrieve_context(
+        self,
+        request: RecommendationRequest,
+    ) -> RecommendationContext:
+        """Embed once and return bounded positive and failure evidence."""
+        retrieval_text = self._retrieval_text(request)
+        query_vector = await self._embedding_provider.embed_query(retrieval_text)
+        positive, failures = await self._retrieve(
+            request,
+            retrieval_text=retrieval_text,
+            query_vector=query_vector,
+        )
+        return self._context_builder.build(
+            request,
+            positive_evidence=positive,
+            failure_evidence=failures,
+        )
+
+    async def generate_from_context(
+        self,
+        context: RecommendationContext,
+    ) -> PromptRecommendation:
+        """Generate and ground one recommendation from already-retrieved context."""
+        repairs_before = self._recommendation_provider.repair_attempts_used
+        draft = await self._recommendation_provider.generate_recommendation(
+            context,
+            validate=lambda candidate: validate_draft_grounding(
+                candidate,
+                context,
+                require_positive_citation=True,
+            ),
+        )
+        repairs_used = self._recommendation_provider.repair_attempts_used - repairs_before
+        return finalize_recommendation(
+            draft,
+            context,
+            provider_name=self._recommendation_provider.provider_name,
+            model_name=self._recommendation_provider.model_name,
+            repair_attempts_used=repairs_used,
+        )
+
+    async def revise_from_context(
+        self,
+        context: RecommendationContext,
+        previous: PromptRecommendation,
+        feedback: str,
+    ) -> PromptRecommendation:
+        """Generate one bounded revision without changing the retrieved evidence."""
+        revision_context = self._context_builder.build_revision(
+            context,
+            previous=previous,
+            feedback=feedback,
+        )
+        return await self.generate_from_context(revision_context)
 
     async def _start_run(self, request: RecommendationRequest) -> UUID:
         parameters = {

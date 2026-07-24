@@ -52,6 +52,12 @@ class GenerationRun(UUIDPrimaryKeyMixin, Base):
             "status",
             "created_at",
         ),
+        Index(
+            "ux_generation_runs_workflow_thread_id",
+            "workflow_thread_id",
+            unique=True,
+            postgresql_where=text("workflow_thread_id IS NOT NULL"),
+        ),
         Index("ix_generation_runs_status", "status"),
         Index("ix_generation_runs_created_at", "created_at"),
     )
@@ -91,6 +97,7 @@ class GenerationRun(UUIDPrimaryKeyMixin, Base):
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
     trace_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    workflow_thread_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

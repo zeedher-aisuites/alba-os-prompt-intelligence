@@ -101,3 +101,46 @@ async def test_embedding_metadata_columns_and_constraints_exist(
     consistency = definitions["ck_prompt_examples_embedding_metadata_consistent"]
     assert "embedding_provider" in consistency
     assert "embedded_at" in consistency
+
+
+@pytest.mark.postgres
+async def test_durable_workflow_schema_and_thread_index_exist(
+    database: Database,
+) -> None:
+    async with database.engine.connect() as connection:
+        schema = await connection.scalar(
+            text(
+                """
+                SELECT schema_name
+                FROM information_schema.schemata
+                WHERE schema_name = 'alba_workflow_checkpoints'
+                """
+            )
+        )
+        column = await connection.scalar(
+            text(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'generation_runs'
+                  AND column_name = 'workflow_thread_id'
+                """
+            )
+        )
+        index_definition = await connection.scalar(
+            text(
+                """
+                SELECT indexdef
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND indexname = 'ux_generation_runs_workflow_thread_id'
+                """
+            )
+        )
+
+    assert schema == "alba_workflow_checkpoints"
+    assert column == "workflow_thread_id"
+    assert index_definition is not None
+    assert "UNIQUE INDEX" in index_definition
+    assert "workflow_thread_id IS NOT NULL" in index_definition

@@ -18,6 +18,10 @@ These rules apply to every change in this repository:
 - Every material change includes proportionate tests.
 - Images may be stored and displayed in phase 1, but are not analyzed or sent to a model.
 - Private chain-of-thought is never stored or displayed.
+- LangGraph checkpoint state contains only bounded serializable data; runtime
+  dependencies, vectors, secrets, ORM objects, and private reasoning stay out.
+- Nodes containing `interrupt()` must have no non-idempotent effect before the
+  interrupt; durable business writes belong in separate short-transaction nodes.
 - Before a stage is considered complete, run:
   - `uv run ruff check .`
   - `uv run ruff format --check .`

@@ -8,13 +8,14 @@ analyze images.
 
 ## Current scope
 
-Stage 3 adds one structured prompt-recommendation use case over the Stage 2
-memory. It retrieves approved precedents and rejected failure patterns with one
-query embedding, builds bounded untrusted context, validates local model JSON,
-checks every evidence reference, and persists the result as a `GenerationRun`.
-PostgreSQL remains the source of truth. LangGraph workflows, agents, the HTML
-UI, image generation, ANN indexes, and telemetry remain later reviewable
-stages.
+Stage 4 wraps the Stage 3 recommendation use case in one durable LangGraph
+workflow. It retrieves evidence, generates and critiques a recommendation,
+pauses for an explicit human decision, and can approve, reject, or perform one
+feedback-driven revision before pausing again. PostgreSQL remains the source of
+truth for business runs and separately stores technical LangGraph checkpoints.
+This is a deterministic workflow, not an autonomous agent. Multiple agents,
+the HTML UI, image generation, ANN indexes, and telemetry remain later
+reviewable stages.
 
 ```text
 Browser / API client
@@ -49,7 +50,21 @@ RecommendationService
         +-- bounded approved/rejected context
         +-- Fake or Ollama /api/chat provider
         +-- Pydantic + evidence-ID validation
-        `-- completed/failed GenerationRun
+        `-- structured recommendation
+                       |
+                       v
+         LangGraph StateGraph + deterministic critic
+                       |
+              +--------+--------+
+              |                 |
+       PostgreSQL checkpoint   interrupt()
+              |                 |
+              `--------+--------'
+                       v
+             approve | revise once | reject
+                       |
+                       v
+             GenerationRun business audit
 ```
 
 ## Requirements
@@ -59,8 +74,8 @@ RecommendationService
 - Docker Desktop or Docker Engine with Compose
 - Ollama with the `embeddinggemma:300m` model for real Stage 2 backfill and
   acceptance evaluation
-- Optional Ollama chat model `qwen2.5:3b` for real Stage 3 validation. The fake
-  recommendation provider requires no chat model.
+- Optional Ollama chat model `qwen2.5:3b` for real Stage 3 and Stage 4
+  validation. The fake recommendation provider requires no chat model.
 
 ## Setup
 
@@ -349,6 +364,143 @@ map makes overlap impossible and the application now validates every hard
 grounding invariant before considering safe degradation. The final Qwen run
 needed no repair. The fake p95 includes one 5,479 ms embedding outlier.
 
+## Durable human-review workflow
+
+Apply the Stage 4 Alembic migration, then explicitly initialize the official
+LangGraph checkpoint tables:
+
+```bash
+uv run alembic upgrade head
+uv run python -m scripts.recommendation_workflow setup
+```
+
+Alembic creates the isolated `alba_workflow_checkpoints` schema and the unique
+nullable `generation_runs.workflow_thread_id` mapping. The official
+`AsyncPostgresSaver.setup()` command then owns these technical tables inside
+that schema:
+
+- `checkpoint_migrations`;
+- `checkpoints`;
+- `checkpoint_blobs`;
+- `checkpoint_writes`.
+
+Application startup does not run checkpoint DDL. Run `setup` after the
+migration on each newly created database.
+
+`setup` first queries `information_schema.schemata`. If the Alembic-owned
+schema is missing, it stops with
+`WORKFLOW_CHECKPOINT_SCHEMA_MISSING` instead of creating objects in `public`.
+After the schema exists, the official saver uses `checkpoint_migrations` to
+apply its table setup idempotently. A workflow command executed while those
+tables are absent reports `WORKFLOW_CHECKPOINT_UNAVAILABLE`; operators can
+confirm readiness with `to_regclass` or a catalog query for the four tables
+listed above.
+
+Start a workflow:
+
+```powershell
+uv run python -m scripts.recommendation_workflow start `
+  --project retrieval-evaluation-lab `
+  --query-type ai_influencer `
+  --brief "Preserva rostro, vestido cobalt y composición editorial." `
+  --constraint "Mantener identidad facial" `
+  --constraint "Conservar vestido cobalt" `
+  --provider fake
+```
+
+The JSON result contains distinct identifiers:
+
+- `thread_id` is the stable durable cursor supplied to LangGraph;
+- `run_id` identifies business audit data in `generation_runs`;
+- `checkpoint_id` identifies one internal version of technical graph state.
+
+Inspect the same pause from another Python process:
+
+```bash
+uv run python -m scripts.recommendation_workflow status \
+  --thread-id <thread-id>
+```
+
+Resume with one closed decision:
+
+```bash
+uv run python -m scripts.recommendation_workflow resume \
+  --thread-id <thread-id> \
+  --decision approve
+
+uv run python -m scripts.recommendation_workflow resume \
+  --thread-id <thread-id> \
+  --decision revise \
+  --feedback "Increase negative space without changing identity."
+
+uv run python -m scripts.recommendation_workflow resume \
+  --thread-id <thread-id> \
+  --decision reject \
+  --feedback "The proposed direction is not suitable."
+```
+
+`revise` requires non-empty feedback and is allowed exactly once. A revision
+uses the original bounded evidence; it does not retrieve a different precedent
+set. A second revision, an invalid decision, a missing checkpoint, a duplicate
+start, and a resume after completion are typed errors. Human rejection is a
+completed business process with `workflow_outcome=reject`, not a technical
+`failed` run.
+
+The `human_review` node performs no database write before `interrupt()`.
+LangGraph reexecutes that node on resume, so all business writes live in
+separate idempotent nodes before or after it. Embeddings, Ollama calls, the
+interrupt, and human wait time hold no PostgreSQL transaction or connection
+open. `SELECT ... FOR UPDATE`, a transaction-scoped advisory lock, and the
+unique thread mapping allow at most one terminal business decision.
+
+The checkpoint contains only bounded JSON: request data, evidence without
+vectors, recommendation, deterministic critique, feedback, stable error codes,
+and UTC ISO timestamps. It excludes SQLAlchemy objects, clients, providers,
+credentials, stack traces, raw model responses, and private reasoning. The
+serializer disables pickle fallback and arbitrary module reconstruction.
+
+On Windows, the workflow CLI explicitly uses a selector event loop because the
+official async Psycopg saver is incompatible with the default proactor loop.
+That runtime choice currently belongs only to the CLI; integration tests install
+an equivalent test loop. Before exposing the workflow through FastAPI, verify
+the ASGI server's Windows loop policy and move checkpointer acquisition into
+the application lifespan without keeping a connection or transaction open
+during human wait time.
+
+Run the fixed nine-workflow objective evaluation:
+
+```bash
+uv run python -m scripts.evaluate_workflows \
+  --project retrieval-evaluation-lab \
+  --provider fake
+```
+
+The final fake-provider audit ran all 9 workflows. Eight reached an interrupt;
+all 8 eligible workflows resumed successfully through 9 resume operations
+because the revision case resumes twice. The expected provider failure stopped
+safely before interrupt. Global expected outcomes and post-interrupt
+transitions were both 100%, and 0 of 8 duplicate terminal attempts were
+accepted. Median latency was 414 ms to an actual interrupt, 75 ms for direct
+resume, and 177 ms for the two-operation revision path.
+
+The same unchanged dataset with `qwen2.5:3b` ran 9 workflows. Seven reached an
+interrupt and all 7 eligible workflows resumed successfully through 8 resume
+operations. The expected provider failure and the prompt-injection case both
+stopped safely before interrupt; the latter omitted its required
+approved-evidence citation. Therefore global expected outcomes remained 8/9,
+while actual post-interrupt transitions were 8/8 and 0 of 7 duplicate terminal
+attempts were accepted. Median latency was 8,060 ms to an actual interrupt,
+76 ms for direct resume, and 7,529 ms for the two-operation revision path. The
+revision persisted feedback but did not reproduce the complete string
+verbatim, so the deliberately strict deterministic incorporation metric was
+0/1; this does not claim the feedback had no semantic influence.
+
+A safe failure before interrupt remains in the global workflow metric, but it
+is not a failed resume because no resume was possible or attempted. These
+synthetic runtime-contract figures are not a creative-quality or universal
+LangGraph/model benchmark. The opt-in Ollama workflow test validates
+`qwen2.5:3b` through an actual revision without using another LLM as judge.
+
 ## Run locally
 
 ```bash
@@ -419,6 +571,7 @@ uv run pytest tests/unit
 | `ALBA_RECOMMENDATION_EVIDENCE_FIELD_MAX_CHARACTERS` | `1200` | Visible per-evidence truncation limit |
 | `ALBA_RECOMMENDATION_MAX_OUTPUT_TOKENS` | `1200` | Ollama structured-output token ceiling |
 | `ALBA_RECOMMENDATION_MAX_REPAIR_ATTEMPTS` | `1` | Maximum schema-repair retry count |
+| `ALBA_WORKFLOW_MAX_REVISIONS` | `1` | Fixed Stage 4 human revision ceiling |
 | `ALBA_POSTGRES_USER` | `alba` | Compose development user |
 | `ALBA_POSTGRES_PASSWORD` | `alba_dev` | Compose-only development password |
 | `ALBA_POSTGRES_DB` | `alba_os` | Compose database |
@@ -439,6 +592,12 @@ Compose values change, update both database URLs consistently.
   embeddings itself.
 - `httpx` is a runtime dependency because the project-owned Ollama adapter
   calls local `/api/embed` and `/api/chat` endpoints asynchronously.
+- `langgraph` supplies the explicit `StateGraph`, durable checkpoint boundary,
+  `interrupt()`, and `Command(resume=...)` runtime.
+- `langgraph-checkpoint-postgres` supplies the official
+  `AsyncPostgresSaver`; no project-owned checkpointer is implemented.
+- Psycopg 3 binary is the async PostgreSQL driver used only by the official
+  checkpointer. SQLAlchemy business persistence continues to use `asyncpg`.
 
 ## Persistence design
 
@@ -470,6 +629,10 @@ Compose values change, update both database URLs consistently.
 - Provider-authored evidence IDs must be subsets of the bounded context.
   Provider/model columns are stamped by the application, not trusted from
   model-authored JSON.
+- LangGraph checkpoints are technical resumable state, while `generation_runs`
+  are the business audit. Neither replaces the other.
+- Workflow write nodes use short caller-owned transactions. The interrupt node
+  is side-effect free, and terminal repository transitions retain row locks.
 
 The Stage 2 CLI deliberately keeps its caller-owned PostgreSQL transaction open
 while each local Ollama batch is generated. That provides all-or-nothing
@@ -484,7 +647,8 @@ Persistence and retrieval decisions are recorded in
 `docs/adr/0001-postgresql-pgvector.md` and
 `docs/adr/0002-embeddinggemma-exact-retrieval.md`. Structured recommendation
 decisions are recorded in
-`docs/adr/0003-structured-local-recommendation.md`.
+`docs/adr/0003-structured-local-recommendation.md`. Durable workflow decisions
+are recorded in `docs/adr/0004-durable-langgraph-human-review.md`.
 
 ## Rebuild the database
 
@@ -512,16 +676,25 @@ extension. That is safe for databases shared with other schemas. In a database
 dedicated exclusively to Alba OS, an administrator may remove it manually only
 after verifying no remaining vector columns depend on it.
 
+Stage 4 downgrade removes the exclusive `alba_workflow_checkpoints` schema with
+`CASCADE`, which deletes its technical checkpoint history, and removes the
+business thread mapping column. This is intentional because the schema is
+owned only by Alba OS. Do not point the setting at a shared schema.
+
 ## Limitations
 
 Embedding input is currently one canonical document per example. The Ollama
 embedding request disables silent truncation, so an input beyond the model
 context fails rather than receiving an embedding for undisclosed partial text.
-Recommendation is one bounded call, not a factual oracle or autonomous agent.
-There is no chunking, reranking, hybrid keyword search, ANN index, HTTP
-recommendation endpoint, RAG answer generation, LangChain agent, LangGraph
-workflow, image generation or analysis, HTML UI, or telemetry. HTTP CRUD also
-remains absent.
+Recommendation is not a factual oracle, and the durable graph is not an
+autonomous agent. There is no chunking, reranking, hybrid keyword search, ANN
+index, HTTP workflow endpoint, RAG answer generation, ReAct agent, multiple
+agents, open tools, conversational memory, streaming, image generation or
+analysis, HTML UI, or telemetry. HTTP CRUD also remains absent. Checkpoint
+retention is manual for the MVP: completed development threads remain until an
+operator calls the official thread deletion API or rebuilds the dedicated
+schema; integration tests remove their own threads and truncate only after the
+reserved test-database guards pass.
 
 Changing model or dimension requires a new column/migration, complete
 regeneration from `embedding_text`, a new index when applicable, retrieval

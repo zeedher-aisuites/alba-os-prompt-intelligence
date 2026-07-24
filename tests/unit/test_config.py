@@ -30,6 +30,7 @@ def test_settings_read_prefixed_environment(monkeypatch: pytest.MonkeyPatch) -> 
     assert settings.retrieval_max_limit == 12
     assert settings.recommendation_context_max_characters == 20_000
     assert settings.recommendation_max_repair_attempts == 0
+    assert settings.workflow_max_revisions == 1
 
 
 def test_settings_reject_unknown_environment() -> None:
@@ -45,3 +46,8 @@ def test_database_url_repr_masks_placeholder_password() -> None:
     assert "alba_dev" not in repr(settings)
     assert "alba_dev" not in repr(settings.database_url)
     assert "alba_dev" not in repr(settings.test_database_url)
+
+
+def test_workflow_settings_reject_invalid_revision_count() -> None:
+    with pytest.raises(ValidationError):
+        Settings(workflow_max_revisions=2)

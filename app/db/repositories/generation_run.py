@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +17,12 @@ from app.domain.exceptions import (
     EntityNotFoundError,
     InvalidRunTransitionError,
 )
-from app.domain.schemas import GenerationRunComplete, GenerationRunCreate, GenerationRunFail
+from app.domain.schemas import (
+    GenerationRunComplete,
+    GenerationRunCreate,
+    GenerationRunFail,
+    GenerationRunProgress,
+)
 
 
 class GenerationRunRepository:
@@ -38,6 +43,18 @@ class GenerationRunRepository:
     async def get_by_id(self, run_id: UUID) -> GenerationRun | None:
         """Read one run without loading its project implicitly."""
         return await self._session.get(GenerationRun, run_id)
+
+    async def get_by_workflow_thread_id(self, thread_id: str) -> GenerationRun | None:
+        """Read the business run mapped to one durable LangGraph thread."""
+        statement = select(GenerationRun).where(GenerationRun.workflow_thread_id == thread_id)
+        return await self._session.scalar(statement)
+
+    async def acquire_workflow_thread_lock(self, thread_id: str) -> None:
+        """Serialize competing starts for one thread for this short transaction."""
+        await self._session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:thread_id, 0))"),
+            {"thread_id": thread_id},
+        )
 
     async def list_by_project(
         self,
@@ -64,6 +81,40 @@ class GenerationRunRepository:
         await self._flush(run)
         return run
 
+    async def claim_human_resume(self, run_id: UUID) -> GenerationRun:
+        """Atomically claim a paused run before resuming its checkpoint."""
+        run = await self._require(run_id)
+        self._require_status(
+            run,
+            {RunStatus.WAITING_FOR_HUMAN},
+            RunStatus.RUNNING,
+        )
+        run.status = RunStatus.RUNNING
+        await self._flush(run)
+        return run
+
+    async def mark_waiting_for_human(
+        self,
+        run_id: UUID,
+        data: GenerationRunProgress,
+    ) -> GenerationRun:
+        """Persist safe review data and release the run for an indefinite pause."""
+        run = await self._require(run_id)
+        if run.status is RunStatus.WAITING_FOR_HUMAN:
+            return run
+        self._require_status(
+            run,
+            {RunStatus.RUNNING},
+            RunStatus.WAITING_FOR_HUMAN,
+        )
+        run.prompt_recommendation = cast(dict[str, object], data.prompt_recommendation)
+        run.provider_parameters = cast(dict[str, object], data.provider_parameters)
+        run.latency_ms = data.latency_ms
+        run.status = RunStatus.WAITING_FOR_HUMAN
+        run.error_code = None
+        await self._flush(run)
+        return run
+
     async def mark_completed(
         self,
         run_id: UUID,
@@ -71,6 +122,8 @@ class GenerationRunRepository:
     ) -> GenerationRun:
         """Persist a validated recommendation and complete the run."""
         run = await self._require(run_id)
+        if run.status is RunStatus.COMPLETED:
+            return run
         self._require_status(run, {RunStatus.RUNNING}, RunStatus.COMPLETED)
         run.prompt_recommendation = cast(dict[str, object], data.prompt_recommendation)
         run.provider_parameters = cast(dict[str, object], data.provider_parameters)
@@ -88,14 +141,26 @@ class GenerationRunRepository:
     ) -> GenerationRun:
         """Record a stable failure code without stack traces or provider payloads."""
         run = await self._require(run_id)
+        if run.status is RunStatus.FAILED and run.error_code == data.error_code:
+            return run
         self._require_status(
             run,
-            {RunStatus.PENDING, RunStatus.RUNNING},
+            {RunStatus.PENDING, RunStatus.RUNNING, RunStatus.WAITING_FOR_HUMAN},
             RunStatus.FAILED,
         )
         run.status = RunStatus.FAILED
         run.error_code = data.error_code
         run.latency_ms = data.latency_ms
+        if data.prompt_recommendation is not None:
+            run.prompt_recommendation = cast(
+                dict[str, object],
+                data.prompt_recommendation,
+            )
+        if data.provider_parameters is not None:
+            run.provider_parameters = cast(
+                dict[str, object],
+                data.provider_parameters,
+            )
         run.completed_at = datetime.now(UTC)
         await self._flush(run)
         return run

@@ -24,6 +24,10 @@ ConstraintText = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=500),
 ]
+RevisionFeedbackText = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=2_000),
+]
 RecommendationText = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=16_000),
@@ -183,6 +187,8 @@ class RecommendationContext(BaseModel):
     failure_evidence: list[EvidenceReference]
     omitted_positive_evidence: int = Field(ge=0)
     omitted_failure_evidence: int = Field(ge=0)
+    revision_feedback: RevisionFeedbackText | None = None
+    previous_recommended_prompt: RecommendationText | None = None
 
 
 class RecommendationResult(BaseModel):
