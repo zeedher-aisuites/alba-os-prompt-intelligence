@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, PostgresDsn, Secret
+from pydantic import Field, HttpUrl, PostgresDsn, Secret
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 EnvironmentName = Literal["development", "test", "production"]
@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     database_max_overflow: int = Field(default=10, ge=0, le=100)
     database_pool_timeout: float = Field(default=30.0, gt=0, le=300)
     database_pool_recycle: int = Field(default=1800, ge=1)
+    ollama_base_url: HttpUrl = HttpUrl("http://127.0.0.1:11434")
+    embedding_model: str = Field(default="embeddinggemma:300m", min_length=1, max_length=100)
+    embedding_timeout: float = Field(default=30.0, gt=0, le=300)
+    embedding_batch_size: int = Field(default=16, ge=1, le=256)
+    retrieval_max_limit: int = Field(default=20, ge=1, le=100)
 
 
 @lru_cache

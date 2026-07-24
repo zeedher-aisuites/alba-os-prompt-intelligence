@@ -49,3 +49,55 @@ async def test_pgvector_extension_is_enabled(database: Database) -> None:
         )
 
     assert extension == "vector"
+
+
+@pytest.mark.postgres
+async def test_embedding_metadata_columns_and_constraints_exist(
+    database: Database,
+) -> None:
+    async with database.engine.connect() as connection:
+        columns = (
+            await connection.execute(
+                text(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name = 'prompt_examples'
+                    AND column_name IN (
+                        'embedding_provider',
+                        'embedding_model',
+                        'embedding_source_hash',
+                        'embedded_at'
+                    )
+                    ORDER BY column_name
+                    """
+                )
+            )
+        ).scalars()
+        constraints = (
+            await connection.execute(
+                text(
+                    """
+                    SELECT conname, pg_get_constraintdef(oid)
+                    FROM pg_constraint
+                    WHERE conname IN (
+                        'ck_prompt_examples_embedding_source_hash_format',
+                        'ck_prompt_examples_embedding_metadata_consistent'
+                    )
+                    ORDER BY conname
+                    """
+                )
+            )
+        ).mappings()
+
+    assert list(columns) == [
+        "embedded_at",
+        "embedding_model",
+        "embedding_provider",
+        "embedding_source_hash",
+    ]
+    definitions = {row["conname"]: row["pg_get_constraintdef"] for row in constraints}
+    assert "embedding_source_hash" in definitions["ck_prompt_examples_embedding_source_hash_format"]
+    consistency = definitions["ck_prompt_examples_embedding_metadata_consistent"]
+    assert "embedding_provider" in consistency
+    assert "embedded_at" in consistency

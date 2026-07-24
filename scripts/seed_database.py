@@ -13,6 +13,7 @@ from app.db.repositories import ProjectRepository, PromptExampleRepository
 from app.db.session import Database
 from app.domain.enums import GenerationStatus, QueryType
 from app.domain.schemas import ProjectCreate, PromptExampleCreate
+from app.embeddings.builder import EmbeddingTextBuilder, EmbeddingTextSource
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,41 +161,24 @@ def build_embedding_text(
     example: SeedExample,
 ) -> str:
     """Build source text now; vector generation remains out of scope."""
-    return "\n".join(
-        (
-            "Project:",
-            project_name,
-            "",
-            "Query type:",
-            example.query_type.value,
-            "",
-            "Expected result:",
-            example.expected_result,
-            "",
-            "Generated image description:",
-            example.generated_image_description,
-            "",
-            "Prompt:",
-            example.base_prompt,
-            "",
-            "Generation method:",
-            example.generation_method,
-            "",
-            "Target platform:",
-            example.target_platform,
-            "",
-            "Status:",
-            example.status.value,
-            "",
-            "Review notes:",
-            example.review_notes or "",
-            "",
-            "Rejection reason:",
-            example.rejection_reason or "",
-            "",
-            "Tags:",
-            ", ".join(example.tags),
+    return (
+        EmbeddingTextBuilder()
+        .build(
+            EmbeddingTextSource(
+                project=project_name,
+                query_type=example.query_type,
+                expected_result=example.expected_result,
+                generated_image_description=example.generated_image_description,
+                base_prompt=example.base_prompt,
+                generation_method=example.generation_method,
+                target_platform=example.target_platform,
+                status=example.status,
+                review_notes=example.review_notes,
+                rejection_reason=example.rejection_reason,
+                tags=example.tags,
+            )
         )
+        .text
     )
 
 

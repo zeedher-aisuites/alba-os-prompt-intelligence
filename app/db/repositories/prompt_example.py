@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
+from app.db.models.project import Project
 from app.db.models.prompt_example import PromptExample
-from app.domain.enums import GenerationStatus
+from app.domain.enums import GenerationStatus, QueryType
 from app.domain.exceptions import ConstraintViolationError, EntityNotFoundError
 from app.domain.schemas import PromptExampleCreate, PromptExampleUpdate
 
@@ -68,6 +71,60 @@ class PromptExampleRepository:
             .limit(limit)
         )
         return list((await self._session.scalars(statement)).all())
+
+    async def list_for_embedding_index(
+        self,
+        *,
+        project_slug: str | None = None,
+        status: GenerationStatus | None = None,
+    ) -> list[PromptExample]:
+        """Load embedding candidates and their projects without implicit I/O."""
+        statement = (
+            select(PromptExample)
+            .join(Project)
+            .options(selectinload(PromptExample.project))
+            .order_by(PromptExample.id)
+        )
+        if project_slug is not None:
+            statement = statement.where(Project.slug == project_slug)
+        if status is not None:
+            statement = statement.where(PromptExample.status == status)
+        return list((await self._session.scalars(statement)).all())
+
+    async def search_similar(
+        self,
+        query_embedding: Sequence[float],
+        *,
+        status: GenerationStatus,
+        project_id: UUID | None = None,
+        query_type: QueryType | None = None,
+        target_platform: str | None = None,
+        minimum_similarity: float | None = None,
+        limit: int,
+    ) -> list[tuple[PromptExample, float]]:
+        """Run exact cosine search over one promotion status."""
+        distance = PromptExample.embedding.cosine_distance(list(query_embedding))
+        similarity = (1.0 - distance).label("similarity")
+        statement = (
+            select(PromptExample, similarity)
+            .where(
+                PromptExample.embedding.is_not(None),
+                PromptExample.status == status,
+            )
+            .order_by(distance.asc())
+            .limit(limit)
+        )
+        if project_id is not None:
+            statement = statement.where(PromptExample.project_id == project_id)
+        if query_type is not None:
+            statement = statement.where(PromptExample.query_type == query_type)
+        if target_platform is not None:
+            statement = statement.where(PromptExample.target_platform == target_platform)
+        if minimum_similarity is not None:
+            statement = statement.where(similarity >= minimum_similarity)
+
+        rows = (await self._session.execute(statement)).all()
+        return [(row[0], float(row[1])) for row in rows]
 
     async def update(
         self,

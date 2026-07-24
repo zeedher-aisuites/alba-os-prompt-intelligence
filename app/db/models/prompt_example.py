@@ -2,12 +2,23 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import CheckConstraint, Enum, ForeignKey, Index, Numeric, String, Text, text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -37,6 +48,33 @@ class PromptExample(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint(
             "image_sha256 IS NULL OR char_length(image_sha256) = 64",
             name="image_sha256_length",
+        ),
+        CheckConstraint(
+            """
+            embedding_source_hash IS NULL
+            OR embedding_source_hash ~ '^[0-9a-f]{64}$'
+            """,
+            name="embedding_source_hash_format",
+        ),
+        CheckConstraint(
+            """
+            (
+                embedding IS NULL
+                AND embedding_provider IS NULL
+                AND embedding_model IS NULL
+                AND embedding_source_hash IS NULL
+                AND embedded_at IS NULL
+            )
+            OR
+            (
+                embedding IS NOT NULL
+                AND embedding_provider IS NOT NULL
+                AND embedding_model IS NOT NULL
+                AND embedding_source_hash IS NOT NULL
+                AND embedded_at IS NOT NULL
+            )
+            """,
+            name="embedding_metadata_consistent",
         ),
         Index(
             "ix_prompt_examples_project_status_query_type",
@@ -101,6 +139,13 @@ class PromptExample(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     embedding_text: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[list[float] | None] = mapped_column(
         Vector(EMBEDDING_DIMENSIONS),
+        nullable=True,
+    )
+    embedding_provider: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    embedding_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    embedding_source_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    embedded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
         nullable=True,
     )
 

@@ -8,6 +8,7 @@ dependencies = [
     "alembic>=1.16,<2",
     "asyncpg>=0.30,<1",
     "fastapi[standard-no-fastapi-cloud-cli]>=0.116,<1.0",
+    "httpx>=0.28,<1.0",
     "pgvector>=0.4,<1",
     "pydantic-settings>=2.10,<3.0",
     "sqlalchemy[asyncio]>=2.0.41,<3",
@@ -16,7 +17,6 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28,<1.0",
     "pyright[nodejs]>=1.1.403,<2.0",
     "pytest>=8.4,<9.0",
     "pytest-asyncio>=1.1,<2.0",
@@ -34,12 +34,13 @@ addopts = [
     "-p",
     "no:cacheprovider",
     "-m",
-    "not e2e",
+    "not e2e and not ollama",
 ]
 asyncio_mode = "auto"
 markers = [
     "docker: requires control of the Docker Engine",
     "e2e: restarts or coordinates external services and is excluded by default",
+    "ollama: requires a real local Ollama service and pre-pulled embedding model",
     "postgres: requires the real PostgreSQL/pgvector service",
 ]
 testpaths = ["tests"]
