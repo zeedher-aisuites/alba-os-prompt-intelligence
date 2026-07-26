@@ -53,6 +53,46 @@ class WorkflowRevisionLimitError(AlbaError):
         )
 
 
+class WorkflowResumeNotAcceptedError(AlbaError):
+    """Raised after a safe rollback of an unpersisted human resume."""
+
+    def __init__(self, thread_id: str) -> None:
+        super().__init__(
+            ErrorDetail(
+                error_code="WORKFLOW_RESUME_NOT_ACCEPTED",
+                message=(
+                    f"Workflow thread '{thread_id}' did not accept the resume command; "
+                    "it remains ready for a safe retry."
+                ),
+                retryable=True,
+            )
+        )
+
+
+class WorkflowResumeReconciliationRequiredError(AlbaError):
+    """Raised when a paused checkpoint has a stale claimed business run."""
+
+    def __init__(self, thread_id: str) -> None:
+        super().__init__(
+            ErrorDetail(
+                error_code="WORKFLOW_RESUME_RECONCILIATION_REQUIRED",
+                message=(f"Workflow thread '{thread_id}' requires reconciliation before resume."),
+            )
+        )
+
+
+class WorkflowResumeReconciliationRejectedError(AlbaError):
+    """Raised when the exact safe reconciliation preconditions are absent."""
+
+    def __init__(self, thread_id: str) -> None:
+        super().__init__(
+            ErrorDetail(
+                error_code="WORKFLOW_RESUME_RECONCILIATION_REJECTED",
+                message=(f"Workflow thread '{thread_id}' is not eligible for safe reconciliation."),
+            )
+        )
+
+
 class WorkflowStateError(AlbaError):
     """Raised when persisted workflow state is internally inconsistent."""
 

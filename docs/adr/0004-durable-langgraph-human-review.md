@@ -163,8 +163,28 @@ Before resume, `claim_human_resume` locks the run row with
 `SELECT ... FOR UPDATE` and transitions `waiting_for_human` to `running`.
 Concurrent approve/reject commands therefore have at most one winner; the
 loser sees `INVALID_RUN_TRANSITION`. Terminal write nodes are idempotent for
-LangGraph replay. A failure after claiming resume is recorded as a stable
-technical failure.
+LangGraph replay.
+
+The claim and a LangGraph checkpoint write cannot share one atomic transaction,
+so resume has a deliberately narrow compensation rule. The service validates
+and trims `thread_id` before both stores are addressed, retains the paused
+checkpoint ID, then issues the short claim. The point of no return is a later
+checkpoint read that proves a different checkpoint was persisted. If invoking
+`Command(resume=...)` raises before that point, and the exact original
+checkpoint still says `waiting_for_human` with no human decision, a second
+short transaction restores the run to `waiting_for_human`. It adds a bounded,
+safe `resume_reconciliations` audit record containing only a stable code,
+checkpoint ID, and UTC timestamp. The public result is the retryable
+`WORKFLOW_RESUME_NOT_ACCEPTED` error.
+
+This compensation is intentionally rejected when the checkpoint advanced, the
+run has an outcome/error/decision, the thread mapping differs, or any required
+precondition is absent. That avoids blindly rolling back a decision that
+LangGraph may have accepted. The explicit `reconcile` CLI command is the same
+typed mechanism for a legacy paused-checkpoint/running-run split; it never
+modifies the checkpoint, recommendation, or evidence. If checkpoint storage is
+unavailable, the service does not pretend it can prove non-acceptance; the
+operation remains unavailable until it can be inspected safely.
 
 No business transaction remains open during embedding, retrieval provider I/O,
 Ollama chat, interrupt, human wait, or process downtime. Retrieval reads use a

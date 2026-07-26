@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID
@@ -93,6 +94,49 @@ class GenerationRunRepository:
         await self._flush(run)
         return run
 
+    async def reconcile_unaccepted_human_resume(
+        self,
+        run_id: UUID,
+        *,
+        thread_id: str,
+        checkpoint_id: str,
+    ) -> GenerationRun:
+        """Restore only a verified unaccepted resume claim to its paused state."""
+        run = await self._require(run_id)
+        parameters = dict(run.provider_parameters)
+        if (
+            run.status is not RunStatus.RUNNING
+            or run.workflow_thread_id != thread_id
+            or run.completed_at is not None
+            or run.error_code is not None
+            or parameters.get("workflow_outcome") is not None
+            or parameters.get("human_decision") is not None
+        ):
+            raise InvalidRunTransitionError(
+                run.id,
+                run.status.value,
+                RunStatus.WAITING_FOR_HUMAN.value,
+            )
+
+        history_value = parameters.get("resume_reconciliations", [])
+        if not isinstance(history_value, list):
+            raise ConstraintViolationError("workflow resume reconciliation")
+        history = cast(list[object], history_value)
+        history.append(
+            {
+                "code": "WORKFLOW_RESUME_NOT_ACCEPTED",
+                "checkpoint_id": checkpoint_id,
+                "reconciled_at": datetime.now(UTC).isoformat(),
+            }
+        )
+        parameters["resume_reconciliations"] = history[-10:]
+        parameters["workflow_phase"] = RunStatus.WAITING_FOR_HUMAN.value
+        parameters["human_decision"] = None
+        run.provider_parameters = parameters
+        run.status = RunStatus.WAITING_FOR_HUMAN
+        await self._flush(run)
+        return run
+
     async def mark_waiting_for_human(
         self,
         run_id: UUID,
@@ -108,7 +152,10 @@ class GenerationRunRepository:
             RunStatus.WAITING_FOR_HUMAN,
         )
         run.prompt_recommendation = cast(dict[str, object], data.prompt_recommendation)
-        run.provider_parameters = cast(dict[str, object], data.provider_parameters)
+        run.provider_parameters = self._preserve_resume_reconciliations(
+            run,
+            data.provider_parameters,
+        )
         run.latency_ms = data.latency_ms
         run.status = RunStatus.WAITING_FOR_HUMAN
         run.error_code = None
@@ -126,7 +173,10 @@ class GenerationRunRepository:
             return run
         self._require_status(run, {RunStatus.RUNNING}, RunStatus.COMPLETED)
         run.prompt_recommendation = cast(dict[str, object], data.prompt_recommendation)
-        run.provider_parameters = cast(dict[str, object], data.provider_parameters)
+        run.provider_parameters = self._preserve_resume_reconciliations(
+            run,
+            data.provider_parameters,
+        )
         run.latency_ms = data.latency_ms
         run.status = RunStatus.COMPLETED
         run.error_code = None
@@ -157,8 +207,8 @@ class GenerationRunRepository:
                 data.prompt_recommendation,
             )
         if data.provider_parameters is not None:
-            run.provider_parameters = cast(
-                dict[str, object],
+            run.provider_parameters = self._preserve_resume_reconciliations(
+                run,
                 data.provider_parameters,
             )
         run.completed_at = datetime.now(UTC)
@@ -187,3 +237,15 @@ class GenerationRunRepository:
         except IntegrityError as exc:
             raise ConstraintViolationError("generation run") from exc
         await self._session.refresh(run)
+
+    @staticmethod
+    def _preserve_resume_reconciliations(
+        run: GenerationRun,
+        parameters: Mapping[str, object],
+    ) -> dict[str, object]:
+        """Keep bounded reconciliation audit history across workflow writes."""
+        merged = dict(parameters)
+        history = run.provider_parameters.get("resume_reconciliations")
+        if isinstance(history, list):
+            merged["resume_reconciliations"] = history
+        return merged

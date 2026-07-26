@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     recommendation_max_output_tokens: int = Field(default=1_200, ge=200, le=8_000)
     recommendation_max_repair_attempts: int = Field(default=1, ge=0, le=1)
     workflow_max_revisions: int = Field(default=1, ge=1, le=1)
+    workflow_diagnostics: bool = False
 
 
 @lru_cache

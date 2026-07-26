@@ -108,6 +108,21 @@ class WorkflowRunPersistence:
         async with self._database.transaction() as session:
             await GenerationRunRepository(session).claim_human_resume(run_id)
 
+    async def reconcile_unaccepted_resume(
+        self,
+        state: RecommendationWorkflowState,
+        *,
+        checkpoint_id: str,
+    ) -> None:
+        """Safely release a claim only while the checkpoint is still unchanged."""
+        run_id = _required_run_id(state)
+        async with self._database.transaction() as session:
+            await GenerationRunRepository(session).reconcile_unaccepted_human_resume(
+                run_id,
+                thread_id=state["thread_id"],
+                checkpoint_id=checkpoint_id,
+            )
+
     async def complete(
         self,
         state: RecommendationWorkflowState,
