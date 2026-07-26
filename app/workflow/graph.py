@@ -197,7 +197,7 @@ class RecommendationWorkflowNodes:
     ) -> RecommendationWorkflowUpdate:
         """Persist human rejection as a completed business process, not a failure."""
         rejected_state = cast(RecommendationWorkflowState, dict(state))
-        rejected_state["phase"] = WorkflowPhase.REJECTED.value
+        rejected_state["phase"] = WorkflowPhase.COMPLETED.value
         rejected_state["updated_at"] = _utc_now()
         await self._persistence.complete(
             rejected_state,
@@ -205,7 +205,7 @@ class RecommendationWorkflowNodes:
             latency_ms=_workflow_latency_ms(rejected_state),
         )
         return {
-            "phase": WorkflowPhase.REJECTED.value,
+            "phase": WorkflowPhase.COMPLETED.value,
             "updated_at": rejected_state["updated_at"],
         }
 

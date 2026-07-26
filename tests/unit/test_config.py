@@ -19,6 +19,7 @@ def test_settings_read_prefixed_environment(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setenv("ALBA_RETRIEVAL_MAX_LIMIT", "12")
     monkeypatch.setenv("ALBA_RECOMMENDATION_CONTEXT_MAX_CHARACTERS", "20000")
     monkeypatch.setenv("ALBA_RECOMMENDATION_MAX_REPAIR_ATTEMPTS", "0")
+    monkeypatch.setenv("ALBA_WORKFLOW_DIAGNOSTICS", "true")
 
     settings = Settings()
 
@@ -31,6 +32,7 @@ def test_settings_read_prefixed_environment(monkeypatch: pytest.MonkeyPatch) -> 
     assert settings.recommendation_context_max_characters == 20_000
     assert settings.recommendation_max_repair_attempts == 0
     assert settings.workflow_max_revisions == 1
+    assert settings.workflow_diagnostics is True
 
 
 def test_settings_reject_unknown_environment() -> None:
@@ -43,6 +45,7 @@ def test_database_url_repr_masks_placeholder_password() -> None:
 
     assert settings.embedding_model == "embeddinggemma:300m"
     assert settings.recommendation_model == "qwen2.5:3b"
+    assert settings.workflow_diagnostics is False
     assert "alba_dev" not in repr(settings)
     assert "alba_dev" not in repr(settings.database_url)
     assert "alba_dev" not in repr(settings.test_database_url)

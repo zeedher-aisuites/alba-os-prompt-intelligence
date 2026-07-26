@@ -7,6 +7,7 @@ from app.workflow.evaluation import (
     build_evaluation_report,
 )
 from app.workflow.schemas import WorkflowEvaluationObservation
+from scripts.evaluate_workflows import expected_terminal_phase
 
 
 def observation(
@@ -43,6 +44,12 @@ def test_dataset_covers_required_workflow_scenarios() -> None:
     assert "prompt-injection-as-data" in case_ids
     assert "restart-new-runtime" in case_ids
     assert "provider-failure" in case_ids
+
+
+def test_human_reject_is_a_completed_workflow_with_a_separate_outcome() -> None:
+    rejected = next(item for item in WORKFLOW_EVALUATION_CASES if item.case_id == "direct-reject")
+
+    assert expected_terminal_phase(rejected).value == "completed"
 
 
 def test_report_uses_objective_rates_and_medians() -> None:

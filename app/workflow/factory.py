@@ -41,4 +41,5 @@ def create_workflow_service(
         recommendation,
         persistence,
         maximum_revisions=settings.workflow_max_revisions,
+        diagnostics_enabled=settings.workflow_diagnostics,
     )

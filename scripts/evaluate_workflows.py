@@ -255,7 +255,7 @@ async def _run_case(
             )
         latency_after_resume_ms = _elapsed_ms(resume_started)
         resume_succeeded = True
-        transition_valid = _expected_terminal_phase(case) is final.phase
+        transition_valid = expected_terminal_phase(case) is final.phase
 
         try:
             await service.resume(
@@ -333,9 +333,8 @@ def _request_for(case_id: str, project_id: UUID) -> RecommendationRequest:
     )
 
 
-def _expected_terminal_phase(case: WorkflowEvaluationCase) -> WorkflowPhase:
-    if case.expected_decision is HumanDecision.REJECT:
-        return WorkflowPhase.REJECTED
+def expected_terminal_phase(case: WorkflowEvaluationCase) -> WorkflowPhase:
+    """Return the technical terminal phase for a completed human decision."""
     return WorkflowPhase.COMPLETED
 
 

@@ -446,6 +446,46 @@ start, and a resume after completion are typed errors. Human rejection is a
 completed business process with `workflow_outcome=reject`, not a technical
 `failed` run.
 
+### Resume consistency and safe reconciliation
+
+Immediately before a human decision, both stores must agree on the paused
+state: the checkpoint is `waiting_for_human` with no decision, and the linked
+`GenerationRun` is also `waiting_for_human`. The CLI normalizes and validates
+`--thread-id` before it looks up either store, so leading or trailing
+whitespace cannot select one run and a different checkpoint configuration.
+
+Resume first takes a short `SELECT ... FOR UPDATE` claim that changes the
+business run to `running`; it does **not** hold that transaction while
+LangGraph runs. The point of no return is only reached when a subsequent
+checkpoint read shows a checkpoint different from the one that was paused
+before the claim. If an exception occurs first and that exact checkpoint still
+proves `waiting_for_human` with `human_decision=null`, the application returns
+the run to `waiting_for_human` in a separate short transaction. It records a
+bounded `resume_reconciliations` audit entry in `provider_parameters` and
+returns the retryable public error `WORKFLOW_RESUME_NOT_ACCEPTED`.
+
+For a legacy interrupted claim (checkpoint still paused, run incorrectly
+`running`, no outcome or decision), inspect it and apply that same narrow
+reconciliation explicitly:
+
+```bash
+uv run python -m scripts.recommendation_workflow reconcile \
+  --thread-id <thread-id>
+```
+
+The command rejects completed, failed, decided, mismatched, or otherwise
+ambiguous state; it never edits a checkpoint, recommendation, or evidence.
+After a successful reconciliation, run the normal `resume` command again. If
+the checkpoint was already advanced, the claim is not released: the workflow
+uses its accepted-execution failure handling instead, avoiding a blind rollback
+of a decision LangGraph may have persisted.
+
+For bounded local operational diagnostics, set
+`ALBA_WORKFLOW_DIAGNOSTICS=true`. It emits only the event name, thread ID, run
+ID, and stable error code through Python logging. Public CLI JSON remains safe:
+it contains neither tracebacks, exception messages, credentials, raw provider
+responses, nor vectors.
+
 The `human_review` node performs no database write before `interrupt()`.
 LangGraph reexecutes that node on resume, so all business writes live in
 separate idempotent nodes before or after it. Embeddings, Ollama calls, the

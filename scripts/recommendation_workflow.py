@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import sys
 from typing import cast
 from uuid import UUID
@@ -24,8 +25,8 @@ from app.workflow.checkpoint import (
 )
 from app.workflow.exceptions import WorkflowStateError
 from app.workflow.factory import create_workflow_service
-from app.workflow.schemas import HumanDecision, WorkflowResumeCommand
-from pydantic import ValidationError
+from app.workflow.schemas import HumanDecision, ThreadId, WorkflowResumeCommand
+from pydantic import TypeAdapter, ValidationError
 
 
 def parse_args() -> argparse.Namespace:
@@ -67,6 +68,12 @@ def parse_args() -> argparse.Namespace:
         required=True,
     )
     resume.add_argument("--feedback")
+
+    reconcile = subparsers.add_parser(
+        "reconcile",
+        help="Safely release an unaccepted resume claim for one paused workflow",
+    )
+    reconcile.add_argument("--thread-id", required=True)
     return parser.parse_args()
 
 
@@ -112,6 +119,8 @@ async def run(args: argparse.Namespace) -> int:
                 )
             elif args.command == "status":
                 result = await service.status(args.thread_id)
+            elif args.command == "reconcile":
+                result = await service.reconcile_unaccepted_resume(args.thread_id)
             else:
                 result = await service.resume(
                     args.thread_id,
@@ -155,8 +164,9 @@ async def _provider_kind(
 ) -> RecommendationProviderKind:
     if args.command == "start":
         return cast(RecommendationProviderKind, args.provider)
+    thread_id = cast(str, TypeAdapter(ThreadId).validate_python(args.thread_id))
     async with database.transaction() as session:
-        run = await GenerationRunRepository(session).get_by_workflow_thread_id(args.thread_id)
+        run = await GenerationRunRepository(session).get_by_workflow_thread_id(thread_id)
         if run is None or run.provider == "fake":
             return "fake"
         if run.provider == "ollama":
@@ -182,6 +192,9 @@ def _print_error(error_code: str, message: str) -> None:
 
 
 def main() -> None:
+    settings = get_settings()
+    if settings.workflow_diagnostics:
+        logging.basicConfig(level=logging.INFO)
     coroutine = run(parse_args())
     if sys.platform == "win32":
         with asyncio.Runner(loop_factory=asyncio.SelectorEventLoop) as runner:
