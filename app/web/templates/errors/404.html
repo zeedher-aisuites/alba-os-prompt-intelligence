@@ -1,0 +1,3 @@
+{% extends "base.html" %}
+{% block title %}Not found · Alba OS{% endblock %}
+{% block content %}<section class="card"><h1>Not found</h1><p>{{ error_message }}</p><p class="muted">{{ error_code }}</p><a class="button secondary" href="{{ url_for('dashboard') }}">Return to dashboard</a></section>{% endblock %}

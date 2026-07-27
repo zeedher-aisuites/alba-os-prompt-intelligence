@@ -9,7 +9,6 @@ import httpx
 from pydantic import ValidationError
 
 from app.recommendation.exceptions import (
-    MissingPositiveEvidenceCitationError,
     RecommendationError,
     RecommendationModelMismatchError,
     RecommendationProviderUnavailableError,
@@ -206,8 +205,6 @@ class OllamaRecommendationProvider:
                 ValidationError,
             ) as exc:
                 if attempt >= self._maximum_repair_attempts:
-                    if isinstance(exc, MissingPositiveEvidenceCitationError) and draft is not None:
-                        return draft
                     if isinstance(exc, RecommendationError):
                         raise
                     raise RecommendationResponseValidationError(

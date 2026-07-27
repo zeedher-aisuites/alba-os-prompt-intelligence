@@ -72,6 +72,9 @@ class WorkflowRunPersistence:
                             "thread_id": thread_id,
                             "workflow_phase": WorkflowPhase.INITIALIZING.value,
                             "revision_count": 0,
+                            "query_type": request["query_type"],
+                            "target_platform": request.get("target_platform"),
+                            "generation_method": request.get("generation_method"),
                             "embedding_provider": (
                                 self._recommendation_service.embedding_provider_name
                             ),
@@ -184,6 +187,7 @@ class WorkflowRunPersistence:
     def _provider_parameters(
         state: RecommendationWorkflowState,
     ) -> dict[str, JsonValue]:
+        request = state["request"]
         parameters: dict[str, object] = {
             "workflow_id": state["workflow_id"],
             "thread_id": state["thread_id"],
@@ -194,6 +198,9 @@ class WorkflowRunPersistence:
             "positive_evidence": state.get("positive_evidence", []),
             "failure_evidence": state.get("failure_evidence", []),
             "critique": state.get("critique", {}),
+            "query_type": request.get("query_type"),
+            "target_platform": request.get("target_platform"),
+            "generation_method": request.get("generation_method"),
         }
         return cast(dict[str, JsonValue], parameters)
 

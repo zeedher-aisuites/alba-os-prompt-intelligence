@@ -8,14 +8,14 @@ analyze images.
 
 ## Current scope
 
-Stage 4 wraps the Stage 3 recommendation use case in one durable LangGraph
-workflow. It retrieves evidence, generates and critiques a recommendation,
-pauses for an explicit human decision, and can approve, reject, or perform one
-feedback-driven revision before pausing again. PostgreSQL remains the source of
-truth for business runs and separately stores technical LangGraph checkpoints.
-This is a deterministic workflow, not an autonomous agent. Multiple agents,
-the HTML UI, image generation, ANN indexes, and telemetry remain later
-reviewable stages.
+Stage 5 adds a local, server-rendered browser interface and a small versioned
+HTTP API over the Stage 4 durable LangGraph workflow. It retrieves evidence,
+generates and critiques a recommendation, pauses for an explicit human decision,
+and can approve, reject, or perform one feedback-driven revision before pausing
+again. PostgreSQL remains the source of truth for business runs and separately
+stores technical LangGraph checkpoints. This is a deterministic workflow, not
+an autonomous agent. Multiple agents, image generation, ANN indexes, and
+telemetry remain later reviewable stages.
 
 ```text
 Browser / API client
@@ -544,12 +544,65 @@ LangGraph/model benchmark. The opt-in Ollama workflow test validates
 ## Run locally
 
 ```bash
-uv run uvicorn app.main:app --reload
+uv run python -m scripts.run_web
 ```
 
-Open <http://127.0.0.1:8000/docs>, use
+Open <http://127.0.0.1:8000/> for the local workflow interface,
+<http://127.0.0.1:8000/docs> for OpenAPI, use
 <http://127.0.0.1:8000/health> for process liveness, or use
 <http://127.0.0.1:8000/health/database> for PostgreSQL readiness.
+
+### Local web workflow interface
+
+`scripts.run_web` is the official local launcher. It binds only to
+`127.0.0.1` by default, has no reload mode, and reads an optional
+`ALBA_WEB_PORT` (or `--port`) value. On Windows it passes Uvicorn an explicit
+Selector loop factory, because Uvicorn 0.36 otherwise selects Proactor even
+when the process policy is Selector; the official async Psycopg checkpointer is
+incompatible with Proactor. Linux and macOS use the same compatible selector
+factory without altering the process policy.
+
+The five-minute local tour is:
+
+1. Start PostgreSQL and apply migrations/checkpoint setup.
+2. Run `uv run python -m scripts.run_web` and open <http://127.0.0.1:8000/>.
+3. Select a project, enter a brief and constraints, then start a `fake`
+   workflow for deterministic local testing.
+4. Inspect the bounded recommendation, approved evidence, rejected warnings,
+   deterministic critique, and human review actions.
+5. Choose revise (with feedback), approve, or reject; reload the page or restart
+   the web process to confirm the same durable thread is recovered.
+
+The `ollama` option uses the configured local `embeddinggemma:300m` model for
+retrieval and `qwen2.5:3b` for recommendation. It is slower and requires both
+models to be installed. The dashboard remains renderable when a dependency is
+down and the versioned API returns a safe `503` when an unavailable dependency
+would make an operation impossible.
+
+The experience library at `/library` is read-only. It never imports, edits,
+approves, embeds, or deletes prompt examples. Prepare a spreadsheet corpus from
+`data/templates/prompt-corpus-v1.csv`, then inspect it without touching the
+database:
+
+```powershell
+uv run python -m scripts.validate_prompt_corpus path\to\my-corpus.csv --strict
+```
+
+Read [the corpus contract](docs/data/prompt-corpus-v1.md) before preparing real
+data. The template is an interchange contract, not an automatic importer.
+
+`/docs` uses a checked-in copy of Swagger UI 5.17.14 under
+`app/web/static/swagger-ui/5.17.14`. It loads `/openapi.json` and every
+JavaScript/CSS asset from the local server, so it remains usable with the strict
+`script-src 'self'` and `style-src 'self'` policy; it does not depend on a CDN.
+The library and workflow history normalize blank optional filters centrally for
+their HTML and `/api/v1` forms, compare textual filters case-insensitively, and
+preserve active filters in previous/next pagination links.
+
+> **Local-only security warning:** this MVP has no authentication, CSRF
+> protection, TLS, or multi-user isolation. Do not expose it to the internet,
+> and do not bind it to `0.0.0.0` without a separately designed deployment
+> security model.
 
 ## Quality gates
 
@@ -612,6 +665,7 @@ uv run pytest tests/unit
 | `ALBA_RECOMMENDATION_MAX_OUTPUT_TOKENS` | `1200` | Ollama structured-output token ceiling |
 | `ALBA_RECOMMENDATION_MAX_REPAIR_ATTEMPTS` | `1` | Maximum schema-repair retry count |
 | `ALBA_WORKFLOW_MAX_REVISIONS` | `1` | Fixed Stage 4 human revision ceiling |
+| `ALBA_WEB_PORT` | `8000` | Local server port read by `scripts.run_web` |
 | `ALBA_POSTGRES_USER` | `alba` | Compose development user |
 | `ALBA_POSTGRES_PASSWORD` | `alba_dev` | Compose-only development password |
 | `ALBA_POSTGRES_DB` | `alba_os` | Compose database |
@@ -632,6 +686,8 @@ Compose values change, update both database URLs consistently.
   embeddings itself.
 - `httpx` is a runtime dependency because the project-owned Ollama adapter
   calls local `/api/embed` and `/api/chat` endpoints asynchronously.
+- `Jinja2` renders the local server-side workflow interface with automatic
+  escaping; `python-multipart` parses ordinary browser form fields.
 - `langgraph` supplies the explicit `StateGraph`, durable checkpoint boundary,
   `interrupt()`, and `Command(resume=...)` runtime.
 - `langgraph-checkpoint-postgres` supplies the official
@@ -728,9 +784,10 @@ embedding request disables silent truncation, so an input beyond the model
 context fails rather than receiving an embedding for undisclosed partial text.
 Recommendation is not a factual oracle, and the durable graph is not an
 autonomous agent. There is no chunking, reranking, hybrid keyword search, ANN
-index, HTTP workflow endpoint, RAG answer generation, ReAct agent, multiple
-agents, open tools, conversational memory, streaming, image generation or
-analysis, HTML UI, or telemetry. HTTP CRUD also remains absent. Checkpoint
+index, RAG answer generation, ReAct agent, multiple agents, open tools,
+conversational memory, streaming, image generation or analysis, or telemetry.
+The Stage 5 HTML interface and small read-only/versioned workflow API are local
+operator surfaces, not a public CRUD product. Checkpoint
 retention is manual for the MVP: completed development threads remain until an
 operator calls the official thread deletion API or rebuilds the dedicated
 schema; integration tests remove their own threads and truncate only after the

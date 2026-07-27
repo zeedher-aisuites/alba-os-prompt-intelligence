@@ -1,0 +1,9 @@
+{% if examples.items %}
+  <div class="table-wrap"><table><thead><tr><th>Created</th><th>Project</th><th>Prompt</th><th>Status</th><th>Platform</th><th>Tags</th><th>Embedding</th></tr></thead><tbody>
+    {% for example in examples.items %}
+      <tr><td>{{ example.created_at }}</td><td>{{ example.project.name }}</td><td><a href="/library/{{ example.id }}?return_to={{ library_return_url | urlencode }}">{{ example.prompt_summary }}</a><br><span class="muted">{{ example.expected_result_summary }}</span></td><td>{{ example.status.value }}</td><td>{{ example.target_platform }} / {{ example.generation_method }}</td><td>{% if example.tags %}<div class="tag-list" aria-label="Tags">{% for tag in example.tags[:3] %}<span class="tag-chip" title="{{ tag }}">{{ tag }}</span>{% endfor %}{% if example.tags | length > 3 %}<span class="tag-more">+{{ example.tags | length - 3 }} more</span>{% endif %}</div>{% else %}<span class="muted">No tags</span>{% endif %}</td><td>{{ example.embedding_state }}</td></tr>
+    {% endfor %}
+  </tbody></table></div>
+{% else %}
+  <p>No prompt examples match these filters. <a href="{{ clear_url }}">Clear filters</a>.</p>
+{% endif %}

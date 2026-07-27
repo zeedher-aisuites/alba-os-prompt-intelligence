@@ -323,7 +323,7 @@ async def test_ollama_provider_shares_repair_with_dynamic_validation() -> None:
     assert provider.repair_attempts_used == 1
 
 
-async def test_ollama_provider_repairs_missing_citation_then_degrades_safely() -> None:
+async def test_ollama_provider_rejects_missing_citation_after_bounded_repair() -> None:
     calls = 0
     recommendation_context = context()
     ungrounded = RecommendationDraft(
@@ -362,12 +362,12 @@ async def test_ollama_provider_repairs_missing_citation_then_degrades_safely() -
         base_url="http://ollama.test",
     ) as client:
         provider = OllamaRecommendationProvider(client=client)
-        actual = await provider.generate_recommendation(
-            recommendation_context,
-            validate=require_citation,
-        )
+        with pytest.raises(MissingPositiveEvidenceCitationError):
+            await provider.generate_recommendation(
+                recommendation_context,
+                validate=require_citation,
+            )
 
-    assert actual == ungrounded
     assert calls == 2
     assert provider.repair_attempts_used == 1
 

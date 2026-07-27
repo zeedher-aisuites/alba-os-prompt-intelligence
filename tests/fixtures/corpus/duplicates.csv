@@ -1,0 +1,3 @@
+external_id,project_slug,query_type,prompt,expected_result,result_description,status,rejection_reason,review_notes,platform,generation_method,tags,source_reference,created_at
+same,example-project,art,Prompt,Expected,,approved,,,web,image,Art|art,,
+same,example-project,art,Prompt two,Expected,,approved,,,web,image,art,,

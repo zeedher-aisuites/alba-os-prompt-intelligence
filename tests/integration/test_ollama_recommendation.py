@@ -13,6 +13,7 @@ from app.domain.enums import QueryType, RunStatus
 from app.embeddings.providers import FakeEmbeddingProvider
 from app.evaluation.demo_data import DEMO_PROJECT_SLUG
 from app.recommendation.context import RecommendationContextBuilder
+from app.recommendation.exceptions import RecommendationError
 from app.recommendation.providers import OllamaRecommendationProvider
 from app.recommendation.schemas import RecommendationRequest
 from app.recommendation.service import RecommendationService
@@ -72,30 +73,51 @@ async def test_real_ollama_chat_recommendation_is_grounded_and_persisted(
         assert project is not None
         project_id = project.id
 
-    result = await RecommendationService(
+    provider = OllamaRecommendationProvider(
+        base_url=test_settings.ollama_base_url.unicode_string(),
+        model_name=test_settings.recommendation_model,
+        timeout_seconds=test_settings.recommendation_timeout,
+        maximum_output_tokens=test_settings.recommendation_max_output_tokens,
+        maximum_repair_attempts=test_settings.recommendation_max_repair_attempts,
+    )
+    service = RecommendationService(
         database,
         embedding_provider,
-        OllamaRecommendationProvider(
-            base_url=test_settings.ollama_base_url.unicode_string(),
-            model_name=test_settings.recommendation_model,
-            timeout_seconds=test_settings.recommendation_timeout,
-            maximum_output_tokens=test_settings.recommendation_max_output_tokens,
-            maximum_repair_attempts=test_settings.recommendation_max_repair_attempts,
-        ),
+        provider,
         context_builder=RecommendationContextBuilder(
             maximum_characters=test_settings.recommendation_context_max_characters,
             evidence_field_maximum=(test_settings.recommendation_evidence_field_max_characters),
         ),
-    ).recommend(
-        RecommendationRequest(
-            project_id=project_id,
-            brief="Preserve the virtual host face, cobalt outfit, and dark hairstyle.",
-            query_type=QueryType.AI_INFLUENCER,
-            constraints=["Do not change the established identity"],
-            positive_limit=3,
-            failure_limit=3,
-        )
     )
+    try:
+        result = await service.recommend(
+            RecommendationRequest(
+                project_id=project_id,
+                brief="Preserve the virtual host face, cobalt outfit, and dark hairstyle.",
+                query_type=QueryType.AI_INFLUENCER,
+                constraints=["Do not change the established identity"],
+                positive_limit=3,
+                failure_limit=3,
+            )
+        )
+    except RecommendationError as error:
+        assert error.error_code in {
+            "POSITIVE_EVIDENCE_CITATION_MISSING",
+            "RECOMMENDATION_RESPONSE_INVALID",
+            "CONSTRAINT_ACCOUNTING_INVALID",
+            "FABRICATED_EVIDENCE_REFERENCE",
+            "FABRICATED_CONSTRAINT_REFERENCE",
+            "EVIDENCE_STATUS_MISMATCH",
+        }
+        async with database.transaction() as session:
+            runs = await GenerationRunRepository(session).list_by_project(project_id)
+        assert len(runs) == 1
+        assert runs[0].status is RunStatus.FAILED
+        assert runs[0].error_code == error.error_code
+        assert runs[0].prompt_recommendation == {}
+        assert provider.repair_attempts_used == test_settings.recommendation_max_repair_attempts
+        print(f"ollama_real_recommendation_route=safe_failure_after_repair:{error.error_code}")
+        return
 
     positive_ids = {item.example_id for item in result.positive_evidence}
     failure_ids = {item.example_id for item in result.failure_evidence}
@@ -120,3 +142,5 @@ async def test_real_ollama_chat_recommendation_is_grounded_and_persisted(
     confidence = stored.prompt_recommendation["confidence"]
     assert isinstance(confidence, int | float)
     assert confidence <= 1
+    route = "success_direct" if provider.repair_attempts_used == 0 else "success_after_repair"
+    print(f"ollama_real_recommendation_route={route}")

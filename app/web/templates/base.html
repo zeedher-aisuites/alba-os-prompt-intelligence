@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Alba OS{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='css/app.css') }}">
+    <meta name="htmx-config" content='{"allowEval":false,"allowScriptTags":false}'>
+    <script defer src="{{ url_for('static', path='js/htmx.min.js') }}"></script>
+    <script defer src="{{ url_for('static', path='js/app.js') }}"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="{{ url_for('dashboard') }}">Alba OS</a>
+      <nav aria-label="Primary navigation">
+        <a href="{{ url_for('workflow_new') }}">New workflow</a>
+        <a href="{{ url_for('workflow_list') }}">Workflow history</a>
+        <a href="{{ url_for('library_list') }}">Experience library</a>
+        <a href="/docs">API docs</a>
+      </nav>
+    </header>
+    <main class="page-content">
+      {% block content %}{% endblock %}
+    </main>
+    <footer class="site-footer">Local-only MVP. Do not expose this interface to the public internet.</footer>
+  </body>
+</html>

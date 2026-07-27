@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from uuid import UUID
 
 from sqlalchemy import select
@@ -51,6 +52,13 @@ class ProjectRepository:
     async def list(self, *, offset: int = 0, limit: int = 100) -> list[Project]:
         """List projects newest first."""
         statement = select(Project).order_by(Project.created_at.desc()).offset(offset).limit(limit)
+        return list((await self._session.scalars(statement)).all())
+
+    async def list_by_ids(self, project_ids: Collection[UUID]) -> list[Project]:
+        """Read an explicit project set for a bounded presenter mapping."""
+        if not project_ids:
+            return []
+        statement = select(Project).where(Project.id.in_(project_ids))
         return list((await self._session.scalars(statement)).all())
 
     async def update(self, project_id: UUID, data: ProjectUpdate) -> Project:

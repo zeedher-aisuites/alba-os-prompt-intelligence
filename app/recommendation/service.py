@@ -41,7 +41,6 @@ from app.recommendation.schemas import (
 )
 from app.retrieval.service import RetrievalService
 
-UNGROUNDED_POSITIVE_CONFIDENCE_MAX = 0.35
 UNMET_CONSTRAINT_CONFIDENCE_MAX = 0.50
 MISSING_FAILURE_WARNING_CONFIDENCE_MAX = 0.50
 NO_EVIDENCE_CONFIDENCE_MAX = 0.30
@@ -352,7 +351,11 @@ def finalize_recommendation(
     if repair_attempts_used not in {0, 1}:
         raise ValueError("A recommendation may use at most one repair attempt.")
 
-    validate_draft_grounding(draft, context)
+    validate_draft_grounding(
+        draft,
+        context,
+        require_positive_citation=bool(context.positive_evidence),
+    )
     allowed_constraints = {item.constraint_id: item for item in context.constraints}
     unmet = set(draft.unmet_constraint_ids)
 
@@ -368,17 +371,6 @@ def finalize_recommendation(
                 f"Constraint {constraint_id} was not covered: {constraint.text}",
                 limit=10,
             )
-
-    if context.positive_evidence and not draft.used_positive_evidence_ids:
-        needs_human_review = True
-        _append_unique(
-            assumptions,
-            (
-                "Approved evidence was retrieved but the provider cited none; "
-                "the recommendation is treated as ungrounded."
-            ),
-            limit=10,
-        )
 
     if context.failure_evidence and not draft.failure_warnings:
         needs_human_review = True
@@ -497,10 +489,8 @@ def calculate_operational_confidence(
         if identifier in positive_by_id
     ]
 
-    if not context.positive_evidence and not context.failure_evidence:
+    if not context.positive_evidence:
         heuristic = NO_EVIDENCE_CONFIDENCE_MAX
-    elif not cited:
-        heuristic = UNGROUNDED_POSITIVE_CONFIDENCE_MAX
     else:
         highest_similarity = max(
             0.0,
@@ -511,8 +501,6 @@ def calculate_operational_confidence(
 
     if draft.unmet_constraint_ids:
         heuristic = min(heuristic, UNMET_CONSTRAINT_CONFIDENCE_MAX)
-    if context.positive_evidence and not cited:
-        heuristic = min(heuristic, UNGROUNDED_POSITIVE_CONFIDENCE_MAX)
     if context.failure_evidence and not draft.failure_warnings:
         heuristic = min(heuristic, MISSING_FAILURE_WARNING_CONFIDENCE_MAX)
     heuristic -= STRUCTURED_REPAIR_PENALTY * repair_attempts_used

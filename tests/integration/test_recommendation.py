@@ -26,7 +26,10 @@ from app.domain.schemas import (
 )
 from app.embeddings.providers import FakeEmbeddingProvider
 from app.evaluation.demo_data import DEMO_PROJECT_SLUG
-from app.recommendation.exceptions import FabricatedEvidenceReferenceError
+from app.recommendation.exceptions import (
+    FabricatedEvidenceReferenceError,
+    MissingPositiveEvidenceCitationError,
+)
 from app.recommendation.protocol import RecommendationDraftValidator
 from app.recommendation.providers import FakeRecommendationProvider
 from app.recommendation.schemas import (
@@ -77,6 +80,42 @@ class FabricatingRecommendationProvider:
             recommended_prompt="A structurally valid but ungrounded prompt.",
             rationale=["This reference is intentionally invalid."],
             used_positive_evidence_ids=[uuid4()],
+            failure_warnings=[],
+            covered_constraint_ids=[item.constraint_id for item in context.constraints],
+            unmet_constraint_ids=[],
+            provider_confidence=0.9,
+            needs_human_review=False,
+        )
+        if validate is not None:
+            validate(draft)
+        return draft
+
+
+class MissingCitationRecommendationProvider:
+    """Return no approved citation so the service must fail safely."""
+
+    @property
+    def provider_name(self) -> str:
+        return "missing-citation-test"
+
+    @property
+    def model_name(self) -> str:
+        return "missing-citation-v1"
+
+    @property
+    def repair_attempts_used(self) -> int:
+        return 0
+
+    async def generate_recommendation(
+        self,
+        context: RecommendationContext,
+        *,
+        validate: RecommendationDraftValidator | None = None,
+    ) -> RecommendationDraft:
+        draft = RecommendationDraft(
+            recommended_prompt="A prompt without an approved evidence citation.",
+            rationale=["The provider intentionally omits the citation."],
+            used_positive_evidence_ids=[],
             failure_warnings=[],
             covered_constraint_ids=[item.constraint_id for item in context.constraints],
             unmet_constraint_ids=[],
@@ -215,6 +254,27 @@ async def test_fabricated_evidence_marks_run_failed(database: Database) -> None:
     assert len(runs) == 1
     assert runs[0].status is RunStatus.FAILED
     assert runs[0].error_code == "FABRICATED_EVIDENCE_REFERENCE"
+    assert runs[0].prompt_recommendation == {}
+    assert runs[0].completed_at is not None
+
+
+@pytest.mark.postgres
+async def test_missing_positive_citation_marks_run_failed(database: Database) -> None:
+    project_id = await indexed_demo_project(database)
+
+    with pytest.raises(MissingPositiveEvidenceCitationError):
+        await RecommendationService(
+            database,
+            FakeEmbeddingProvider(),
+            MissingCitationRecommendationProvider(),
+        ).recommend(recommendation_request(project_id))
+
+    async with database.transaction() as session:
+        runs = await GenerationRunRepository(session).list_by_project(project_id)
+
+    assert len(runs) == 1
+    assert runs[0].status is RunStatus.FAILED
+    assert runs[0].error_code == "POSITIVE_EVIDENCE_CITATION_MISSING"
     assert runs[0].prompt_recommendation == {}
     assert runs[0].completed_at is not None
 

@@ -74,6 +74,40 @@ class GenerationRunRepository:
         )
         return list((await self._session.scalars(statement)).all())
 
+    async def list_workflows(
+        self,
+        *,
+        project_id: UUID | None = None,
+        status: RunStatus | None = None,
+        provider: str | None = None,
+        workflow_outcome: str | None = None,
+        waiting_for_human: bool | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> list[GenerationRun]:
+        """List durable workflow runs without loading projects implicitly."""
+        statement = select(GenerationRun).where(GenerationRun.workflow_thread_id.is_not(None))
+        if project_id is not None:
+            statement = statement.where(GenerationRun.project_id == project_id)
+        if status is not None:
+            statement = statement.where(GenerationRun.status == status)
+        if provider is not None:
+            statement = statement.where(GenerationRun.provider == provider)
+        if workflow_outcome is not None:
+            statement = statement.where(
+                GenerationRun.provider_parameters["workflow_outcome"].astext == workflow_outcome
+            )
+        if waiting_for_human is True:
+            statement = statement.where(GenerationRun.status == RunStatus.WAITING_FOR_HUMAN)
+        if waiting_for_human is False:
+            statement = statement.where(GenerationRun.status != RunStatus.WAITING_FOR_HUMAN)
+        statement = (
+            statement.order_by(GenerationRun.created_at.desc(), GenerationRun.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return list((await self._session.scalars(statement)).all())
+
     async def mark_running(self, run_id: UUID) -> GenerationRun:
         """Move a pending run to running."""
         run = await self._require(run_id)
