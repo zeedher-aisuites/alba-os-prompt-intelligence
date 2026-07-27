@@ -12,6 +12,7 @@ from app.recommendation.exceptions import (
     EvidenceStatusMismatchError,
     FabricatedConstraintReferenceError,
     FabricatedEvidenceReferenceError,
+    MissingPositiveEvidenceCitationError,
 )
 from app.recommendation.schemas import (
     EvidenceReference,
@@ -186,19 +187,15 @@ def test_warning_with_unknown_evidence_id_is_rejected() -> None:
         )
 
 
-def test_missing_positive_citation_forces_ungrounded_human_review() -> None:
+def test_missing_positive_citation_is_rejected() -> None:
     approved = evidence(GenerationStatus.APPROVED)
     context = recommendation_context(positive=[approved], failures=[])
 
-    result = finalize(
-        draft_for(context, used_positive_evidence_ids=[]),
-        context,
-    )
-
-    assert result.used_positive_evidence_ids == []
-    assert result.needs_human_review is True
-    assert result.confidence <= 0.35
-    assert any("treated as ungrounded" in item for item in result.assumptions)
+    with pytest.raises(MissingPositiveEvidenceCitationError):
+        finalize(
+            draft_for(context, used_positive_evidence_ids=[]),
+            context,
+        )
 
 
 def test_fabricated_constraint_id_is_rejected() -> None:

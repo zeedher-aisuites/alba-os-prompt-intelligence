@@ -31,6 +31,9 @@ class Database:
         database_url: PostgresDsn | None = None,
     ) -> None:
         resolved_url = database_url or settings.database_url.get_secret_value()
+        # Keep the effective DSN private but available to infrastructure adapters
+        # that must connect to the same database as this SQLAlchemy engine.
+        self._database_url: PostgresDsn = resolved_url
         self.engine: AsyncEngine = create_async_engine(
             resolved_url.unicode_string(),
             echo=settings.database_echo,
@@ -47,6 +50,11 @@ class Database:
             expire_on_commit=False,
             autoflush=False,
         )
+
+    @property
+    def database_url(self) -> PostgresDsn:
+        """Return the effective DSN for internal infrastructure wiring only."""
+        return self._database_url
 
     @asynccontextmanager
     async def transaction(self) -> AsyncGenerator[AsyncSession]:

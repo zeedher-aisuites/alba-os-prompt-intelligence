@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Request error · Alba OS{% endblock %}
+{% block content %}
+  <section class="card error-page">
+    <h1>Request could not be completed</h1>
+    <p>{{ error_message }}</p>
+    <p class="muted">Reference: {{ error_code }}</p>
+    <p><a href="{{ url_for('dashboard') }}">Return to dashboard</a></p>
+  </section>
+{% endblock %}

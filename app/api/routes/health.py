@@ -20,7 +20,7 @@ router = APIRouter(tags=["system"])
 SettingsDependency = Annotated[Settings, Depends(get_settings)]
 
 
-@router.get("/", response_model=ServiceInfo)
+@router.get("/api", response_model=ServiceInfo)
 async def service_info(settings: SettingsDependency) -> ServiceInfo:
     """Return public service metadata."""
     return ServiceInfo(name=settings.app_name, version=APP_VERSION)

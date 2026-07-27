@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Prompt example · Alba OS{% endblock %}
+{% block content %}
+  <p><a href="{{ return_url }}">Back to library</a></p>
+  <section class="page-heading"><h1>Prompt example</h1><p class="muted">{{ example.project.name }} · {{ example.id }}</p></section>
+  <section class="card"><h2>Prompt</h2><p class="pre-wrap">{{ example.base_prompt }}</p><h2>Expected result</h2><p class="pre-wrap">{{ example.expected_result }}</p>{% if example.generated_image_description %}<h2>Result description</h2><p class="pre-wrap">{{ example.generated_image_description }}</p>{% endif %}</section>
+  <section class="card"><h2>Review metadata</h2><dl class="metadata"><dt>Status</dt><dd>{{ example.status.value }}</dd><dt>Query type</dt><dd>{{ example.query_type.value }}</dd><dt>Platform</dt><dd>{{ example.target_platform }}</dd><dt>Generation method</dt><dd>{{ example.generation_method }}</dd><dt>Tags</dt><dd>{% if example.tags %}<div class="tag-list" aria-label="Tags">{% for tag in example.tags %}<span class="tag-chip" title="{{ tag }}">{{ tag }}</span>{% endfor %}</div>{% else %}No tags{% endif %}</dd><dt>Created</dt><dd>{{ example.created_at }}</dd><dt>Updated</dt><dd>{{ example.updated_at }}</dd></dl>{% if example.review_notes %}<h3>Review notes</h3><p class="pre-wrap">{{ example.review_notes }}</p>{% endif %}{% if example.rejection_reason %}<h3>Rejection reason</h3><p class="pre-wrap">{{ example.rejection_reason }}</p>{% endif %}</section>
+  <section class="card"><h2>Embedding metadata</h2><dl class="metadata"><dt>State</dt><dd>{{ example.embedding_state }}</dd><dt>Provider</dt><dd>{{ example.embedding_provider or 'not indexed' }}</dd><dt>Model</dt><dd>{{ example.embedding_model or 'not indexed' }}</dd><dt>Embedded at</dt><dd>{{ example.embedded_at or 'not indexed' }}</dd></dl><p class="muted">The vector itself is intentionally never displayed.</p></section>
+{% endblock %}

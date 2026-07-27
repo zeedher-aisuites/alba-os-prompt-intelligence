@@ -1,0 +1,30 @@
+{% if workflow_items %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Created</th><th>Project</th><th>Brief</th><th>Query type</th><th>Phase</th>
+          <th>Run</th><th>Outcome</th><th>Confidence</th><th>Provider</th><th>Revisions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for workflow in workflow_items %}
+          <tr>
+            <td>{{ workflow.created_at }}</td>
+            <td>{{ workflow.project.name }}</td>
+            <td><a href="/workflows/{{ workflow.thread_id }}">{{ workflow.brief_summary }}</a></td>
+            <td>{{ workflow.query_type.value if workflow.query_type else 'unknown' }}</td>
+            <td>{{ workflow.phase or 'unknown' }}</td>
+            <td>{{ workflow.run_status.value }}</td>
+            <td>{{ workflow.workflow_outcome or '—' }}</td>
+            <td>{{ '%.2f'|format(workflow.confidence) if workflow.confidence is not none else '—' }}</td>
+            <td>{{ workflow.provider }}</td>
+            <td>{{ workflow.revision_count }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <p>No durable workflows match these filters. <a href="{{ clear_url }}">Clear filters</a>.</p>
+{% endif %}

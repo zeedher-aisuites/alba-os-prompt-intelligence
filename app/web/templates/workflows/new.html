@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}New workflow · Alba OS{% endblock %}
+{% block content %}
+  <section class="page-heading"><h1>Create a workflow</h1><p>Use <strong>fake</strong> for deterministic testing. Ollama uses local EmbeddingGemma and Qwen.</p></section>
+  <form method="post" action="{{ url_for('workflow_create') }}" class="card form-stack" novalidate>
+    <div class="field">
+      <label for="project_id">Project</label>
+      <select id="project_id" name="project_id" required>
+        <option value="">Select a project</option>
+        {% for project in projects %}<option value="{{ project.id }}" {% if values.project_id == project.id|string %}selected{% endif %}>{{ project.name }} ({{ project.slug }})</option>{% endfor %}
+      </select>
+      {% if errors.project_id %}<p class="field-error">{{ errors.project_id }}</p>{% endif %}
+    </div>
+    <div class="field">
+      <label for="query_type">Query type</label>
+      <select id="query_type" name="query_type" required>
+        <option value="">Select a category</option>
+        {% for item in query_types %}<option value="{{ item.value }}" {% if values.query_type == item.value %}selected{% endif %}>{{ item.value }}</option>{% endfor %}
+      </select>
+      {% if errors.query_type %}<p class="field-error">{{ errors.query_type }}</p>{% endif %}
+    </div>
+    <div class="field"><label for="brief">Creative brief <span class="muted">(1–4,000 characters)</span></label><textarea id="brief" name="brief" maxlength="4000" required>{{ values.brief }}</textarea>{% if errors.brief %}<p class="field-error">{{ errors.brief }}</p>{% endif %}</div>
+    <div class="two-column">
+      <div class="field"><label for="target_platform">Target platform <span class="muted">optional</span></label><input id="target_platform" name="target_platform" maxlength="100" value="{{ values.target_platform }}"></div>
+      <div class="field"><label for="generation_method">Generation method <span class="muted">optional</span></label><input id="generation_method" name="generation_method" maxlength="100" value="{{ values.generation_method }}"></div>
+    </div>
+    <fieldset class="field"><legend>Constraints <span class="muted">up to 20, 500 characters each</span></legend><div id="constraints">{% for constraint in values.constraints %}{% include "workflows/_constraint_input.html" %}{% endfor %}</div><button type="button" class="button secondary" hx-get="{{ url_for('constraint_input') }}" hx-target="#constraints" hx-swap="beforeend">Add constraint</button>{% if errors.constraints %}<p class="field-error">{{ errors.constraints }}</p>{% endif %}</fieldset>
+    <div class="two-column">
+      <div class="field"><label for="provider">Recommendation provider</label><select id="provider" name="provider"><option value="fake" {% if values.provider == 'fake' %}selected{% endif %}>fake — deterministic test mode</option><option value="ollama" {% if values.provider == 'ollama' %}selected{% endif %}>ollama — local Qwen</option></select>{% if errors.provider %}<p class="field-error">{{ errors.provider }}</p>{% endif %}</div>
+      <div class="field"><label for="thread_id">Thread ID <span class="muted">optional; 1–64 safe characters</span></label><input id="thread_id" name="thread_id" maxlength="64" value="{{ values.thread_id }}">{% if errors.thread_id %}<p class="field-error">{{ errors.thread_id }}</p>{% endif %}</div>
+    </div>
+    {% if errors.form %}<p class="field-error">{{ errors.form }}</p>{% endif %}
+    <button class="button primary" type="submit">Start workflow</button>
+  </form>
+{% endblock %}

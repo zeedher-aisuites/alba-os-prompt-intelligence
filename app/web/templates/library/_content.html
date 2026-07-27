@@ -1,0 +1,50 @@
+<section id="library-content">
+  <section class="page-heading">
+    <h1>Experience library</h1>
+    <p>Read-only inspection of the corpus. This stage never edits, imports, embeds, or approves examples.</p>
+  </section>
+  <form class="card filters" method="get" action="{{ url_for('library_list') }}" hx-get="{{ url_for('library_list') }}" hx-target="#library-content" hx-swap="outerHTML" hx-push-url="true">
+    <label>Project
+      <select name="project_id">
+        <option value="">All projects</option>
+        {% for project in filter_options.projects %}<option value="{{ project.id }}" {% if filters.project_id == project.id|string %}selected{% endif %}>{{ project.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Query type
+      <select name="query_type">
+        <option value="">All query types</option>
+        {% for option in filter_options.query_types %}<option value="{{ option.value }}" {% if filters.query_type == option.value %}selected{% endif %}>{{ option.label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Status
+      <select name="status">
+        <option value="">All statuses</option>
+        {% for option in filter_options.statuses %}<option value="{{ option.value }}" {% if filters.status == option.value %}selected{% endif %}>{{ option.label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Platform
+      <span class="field-help">The generation service used for this experience.</span>
+      <select name="platform">
+        <option value="">All platforms</option>
+        {% for option in filter_options.platforms %}<option value="{{ option.value }}" {% if filters.platform == option.value %}selected{% endif %}>{{ option.label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Generation method
+      <span class="field-help">How the result was generated, such as text to image or image to video.</span>
+      <select name="method">
+        <option value="">All generation methods</option>
+        {% for option in filter_options.generation_methods %}<option value="{{ option.value }}" {% if filters.method == option.value %}selected{% endif %}>{{ option.label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Tag
+      <span class="field-help">Labels describing strengths, failures, or recurring patterns.</span>
+      <select name="tag">
+        <option value="">All tags</option>
+        {% for option in filter_options.tags %}<option value="{{ option.value }}" {% if filters.tag == option.value %}selected{% endif %}>{{ option.label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Text<input name="text" maxlength="500" value="{{ filters.text }}"></label>
+    <button class="button primary" type="submit">Apply filters</button>
+  </form>
+  {% include "library/_list.html" %}
+</section>

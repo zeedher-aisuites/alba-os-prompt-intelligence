@@ -1,0 +1,9 @@
+<section id="workflow-card" class="workflow-card">
+  <div class="status-row"><span class="status">Phase: {{ workflow.phase }}</span><span class="status">Run: {{ workflow.run_status or 'unavailable' }}</span>{% if workflow.workflow_outcome %}<span class="status ok">Outcome: {{ workflow.workflow_outcome }}</span>{% endif %}</div>
+  {% if resume_error %}<div class="notice error" role="alert">{{ resume_error }}</div>{% endif %}
+  {% if workflow.error_code %}<div class="notice error" role="alert">Safe error: {{ workflow.error_code }}</div>{% endif %}
+  <h2>Human review</h2>
+  <p>Revision count: {{ workflow.revision_count }}{% if workflow.human_decision %} · Last decision: {{ workflow.human_decision.value }}{% endif %}</p>
+  {% if workflow.human_feedback %}<p><strong>Previous feedback:</strong> {{ workflow.human_feedback }}</p>{% endif %}
+  {% include "workflows/_resume_form.html" %}
+</section>

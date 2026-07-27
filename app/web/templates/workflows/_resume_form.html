@@ -1,0 +1,13 @@
+{% if workflow.actions.can_approve or workflow.actions.can_revise or workflow.actions.can_reject %}
+  {% if workflow.revision_count >= 1 and not workflow.actions.can_revise %}
+    <p class="notice warning">The single revision has already been used.</p>
+  {% endif %}
+  <form method="post" action="/workflows/{{ workflow.thread_id }}/resume" class="form-stack" hx-post="/workflows/{{ workflow.thread_id }}/resume" hx-target="#workflow-card" hx-swap="outerHTML">
+    <div class="field"><label for="feedback">Feedback <span class="muted">required only for revise</span></label><textarea id="feedback" name="feedback" maxlength="2000"></textarea></div>
+    <div class="button-row"><button class="button primary" type="submit" name="decision" value="approve">Approve</button>{% if workflow.actions.can_revise %}<button class="button secondary" type="submit" name="decision" value="revise">Revise</button>{% endif %}<button class="button danger" type="submit" name="decision" value="reject">Reject</button></div>
+  </form>
+{% elif workflow.actions.can_reconcile %}
+  <form method="post" action="/workflows/{{ workflow.thread_id }}/reconcile" hx-post="/workflows/{{ workflow.thread_id }}/reconcile" hx-target="#workflow-card" hx-swap="outerHTML"><p class="notice warning">This paused workflow requires safe reconciliation before a decision.</p><button class="button secondary" type="submit">Reconcile safely</button></form>
+{% else %}
+  <p class="muted">No human action is available for this workflow.</p>
+{% endif %}

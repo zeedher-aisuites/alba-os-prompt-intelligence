@@ -1,0 +1,8 @@
+<div id="library-results">
+  {% include "library/_list_table.html" %}
+  <nav class="pagination" aria-label="Library pagination">
+    {% if pagination_navigation.previous_url %}<a class="button secondary" href="{{ pagination_navigation.previous_url }}">Previous</a>{% endif %}
+    <span>{{ pagination_navigation.range_label }}</span>
+    {% if pagination_navigation.next_url %}<a class="button secondary" href="{{ pagination_navigation.next_url }}">Next</a>{% endif %}
+  </nav>
+</div>

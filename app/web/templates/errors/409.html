@@ -1,0 +1,3 @@
+{% extends "base.html" %}
+{% block title %}Conflict · Alba OS{% endblock %}
+{% block content %}<section class="card"><h1>Action not available</h1><p>{{ error_message }}</p><p class="muted">{{ error_code }}</p><a class="button secondary" href="{{ url_for('workflow_list') }}">View workflows</a></section>{% endblock %}

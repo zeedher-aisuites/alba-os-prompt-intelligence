@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Alba OS · Local prompt intelligence{% endblock %}
+{% block content %}
+  <section class="hero">
+    <p class="eyebrow">Operational memory and assisted prompt review</p>
+    <h1>Alba OS Prompt Intelligence</h1>
+    <p>Build a grounded recommendation, inspect its evidence, and make a durable human decision.</p>
+    <a class="button primary" href="{{ url_for('workflow_new') }}">New workflow</a>
+  </section>
+  {% if dependency_warning %}<p class="notice warning" role="status">Some dependency data is unavailable. The page is still safe to inspect.</p>{% endif %}
+
+  <section class="dashboard-grid" aria-label="Operational summary">
+    <article class="card"><h2>Projects</h2><p class="metric">{{ projects | length }}</p></article>
+    <article class="card"><h2>Waiting for review</h2><p class="metric">{{ waiting_count }}</p></article>
+    <article class="card"><h2>Dependencies</h2><p class="status {% if readiness.ready %}ok{% else %}warning{% endif %}">{% if readiness.ready %}Ready{% else %}Attention needed{% endif %}</p></article>
+  </section>
+
+  <section class="card">
+    <div class="section-heading"><h2>Available projects</h2><a href="{{ url_for('workflow_new') }}">Start a workflow</a></div>
+    {% if projects %}
+      <ul class="plain-list">
+        {% for project in projects %}
+          <li><strong>{{ project.name }}</strong> <span class="muted">{{ project.slug }}</span>{% if project.description %}<br>{{ project.description }}{% endif %}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>No projects are stored yet. The web app does not create seed data automatically.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <div class="section-heading"><h2>Recent workflows</h2><a href="{{ url_for('workflow_list') }}">View history</a></div>
+    {% with workflow_items=workflows, clear_url=url_for('workflow_list') %}{% include "workflows/_list_table.html" %}{% endwith %}
+  </section>
+
+  <section class="card">
+    <div class="section-heading"><h2>Dependency readiness</h2><a href="/api/v1/readiness">JSON readiness</a></div>
+    <ul class="plain-list">
+      {% for dependency in readiness.dependencies %}
+        <li><span class="status {% if dependency.available %}ok{% else %}error{% endif %}">{{ dependency.name }}</span> — {{ dependency.detail }}</li>
+      {% endfor %}
+    </ul>
+    <p class="muted">Last checked: {{ readiness.checked_at }}</p>
+  </section>
+{% endblock %}

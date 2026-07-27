@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Workflow history · Alba OS{% endblock %}
+{% block content %}
+  <section class="page-heading"><h1>Workflow history</h1><p>Persisted business runs only; this page does not perform semantic search.</p></section>
+  <form class="card filters" method="get" action="{{ url_for('workflow_list') }}" hx-get="{{ url_for('workflow_list') }}" hx-target="#workflow-results" hx-push-url="true"><label>Project<select name="project_id"><option value="">All</option>{% for project in projects %}<option value="{{ project.id }}" {% if filters.project_id == project.id|string %}selected{% endif %}>{{ project.name }}</option>{% endfor %}</select></label><label>Status<select name="status"><option value="">All</option>{% for item in statuses %}<option value="{{ item.value }}" {% if filters.status == item.value %}selected{% endif %}>{{ item.value }}</option>{% endfor %}</select></label><label>Outcome<input name="outcome" maxlength="24" value="{{ filters.outcome }}"></label><label>Provider<select name="provider"><option value="">All</option><option value="fake" {% if filters.provider == 'fake' %}selected{% endif %}>fake</option><option value="ollama" {% if filters.provider == 'ollama' %}selected{% endif %}>ollama</option></select></label><label><input type="checkbox" name="waiting" value="true" {% if filters.waiting == 'true' %}checked{% endif %}> Waiting for human</label><button class="button primary" type="submit">Apply filters</button></form>
+  {% include "workflows/_list.html" %}
+{% endblock %}
