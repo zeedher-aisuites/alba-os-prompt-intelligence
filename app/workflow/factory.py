@@ -24,10 +24,17 @@ def create_workflow_service(
     *,
     provider_kind: RecommendationProviderKind,
 ) -> RecommendationWorkflowService:
-    """Build runtime dependencies without putting them into graph state."""
+    """Build runtime dependencies without putting them into graph state.
+
+    The embedding provider follows the recommendation provider: a ``fake``
+    workflow is fully deterministic and needs no Ollama model, while an
+    ``ollama`` workflow uses the real local EmbeddingGemma model. Mixing them
+    would make retrieval similarity meaningless, because stored vectors and
+    the query vector must come from the same provider and model.
+    """
     recommendation = RecommendationService(
         database,
-        create_embedding_provider(settings, "ollama"),
+        create_embedding_provider(settings, provider_kind),
         create_recommendation_provider(settings, provider_kind),
         context_builder=RecommendationContextBuilder(
             maximum_characters=settings.recommendation_context_max_characters,

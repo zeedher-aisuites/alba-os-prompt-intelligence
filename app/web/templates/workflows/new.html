@@ -2,12 +2,26 @@
 {% block title %}New workflow · Alba OS{% endblock %}
 {% block content %}
   <section class="page-heading"><h1>Create a workflow</h1><p>Use <strong>fake</strong> for deterministic testing. Ollama uses local EmbeddingGemma and Qwen.</p></section>
+  <section class="card" aria-label="Demo briefs">
+    <h2>Try a demo brief</h2>
+    <p>One click fills the form with a seeded demo case. No new data is created until you start the workflow.</p>
+    <div class="button-row">
+      <button type="button" class="button secondary" data-demo="approve">1 · Approve — cobalt host</button>
+      <button type="button" class="button secondary" data-demo="revise">2 · Revise — station frames</button>
+      <button type="button" class="button secondary" data-demo="reject">3 · Reject — no evidence</button>
+    </div>
+    <ul class="plain-list">
+      <li><strong>1 · Approve:</strong> approved cobalt-host evidence is retrieved and the recommendation is grounded — approve it at human review.</li>
+      <li><strong>2 · Revise:</strong> the recommendation reaches human review — try Revise once, for example with “Add more negative space without changing identity or movement.”</li>
+      <li><strong>3 · Reject:</strong> Cobalt Lounge has no logo examples, so no approved evidence is retrieved and confidence is capped — a safe case to reject at human review.</li>
+    </ul>
+  </section>
   <form method="post" action="{{ url_for('workflow_create') }}" class="card form-stack" novalidate>
     <div class="field">
       <label for="project_id">Project</label>
       <select id="project_id" name="project_id" required>
         <option value="">Select a project</option>
-        {% for project in projects %}<option value="{{ project.id }}" {% if values.project_id == project.id|string %}selected{% endif %}>{{ project.name }} ({{ project.slug }})</option>{% endfor %}
+        {% for project in projects %}<option value="{{ project.id }}" data-slug="{{ project.slug }}" {% if values.project_id == project.id|string %}selected{% endif %}>{{ project.name }} ({{ project.slug }})</option>{% endfor %}
       </select>
       {% if errors.project_id %}<p class="field-error">{{ errors.project_id }}</p>{% endif %}
     </div>

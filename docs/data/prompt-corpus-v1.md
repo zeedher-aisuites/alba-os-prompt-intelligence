@@ -1,24 +1,33 @@
 # Prompt corpus v1 contract
 
-This CSV is a user-owned preparation format for the read-only Alba OS library.
-It is deliberately **not** an import format yet: the PostgreSQL schema has no
-stable external identity or provenance columns, so automatic import would not
-be safely idempotent. Validation never writes PostgreSQL, generates embeddings,
-or edits the CSV.
-
-Start from `data/templates/prompt-corpus-v1.csv`, save as UTF-8 CSV, then run:
+This CSV is a user-owned preparation format for the Alba OS library.
+Validate it without writing to PostgreSQL:
 
 ```powershell
 uv run python -m scripts.validate_prompt_corpus path\to\my-corpus.csv --strict
 ```
 
-The command writes a JSON report to standard output. A non-zero exit code means
-there are validation errors (or, with `--strict`, warnings that need review).
+Import a validated CSV into one existing project (the import is idempotent
+by project plus prompt, and by the `external-id:<id>` tag recorded on every
+imported example):
+
+```powershell
+uv run python -m scripts.import_prompt_corpus path\to\my-corpus.csv --project example-project --dry-run
+uv run python -m scripts.import_prompt_corpus path\to\my-corpus.csv --project example-project --strict
+```
+
+Every row must use the `--project` slug, and the project must already exist.
+`source_reference` and `created_at` have no storage column in this version
+and are reported as not stored, never silently rewritten into another field.
+Imported examples have no embedding until `scripts/rebuild_embeddings.py`
+runs. The command writes a JSON report to standard output. A non-zero exit
+code means there are validation errors (or, with `--strict`, warnings that
+need review), a project-slug mismatch, or a missing project.
 Keep real corpus files outside Git unless explicitly approved for the project.
 
 | Column | Required | Contract |
 | --- | --- | --- |
-| `external_id` | yes | Your stable identifier, 1–120 characters, unique in the CSV. It is not stored in PostgreSQL yet. |
+| `external_id` | yes | Your stable identifier, 1–120 characters, unique in the CSV. The importer records it as an `external-id:<id>` tag, which is also how re-imports are detected. |
 | `project_slug` | yes | Existing or planned project identifier in lowercase kebab-case, up to 120 characters. |
 | `query_type` | yes | One of `ai_influencer`, `toon`, `product_brand`, `marketing`, `logo`, `video_frame`, `art`, `other`. |
 | `prompt` | yes | Source prompt, 1–16,000 characters. Maps conceptually to `PromptExample.base_prompt`. |
@@ -30,7 +39,7 @@ Keep real corpus files outside Git unless explicitly approved for the project.
 | `platform` | yes | Generation service used for this experience, up to 100 characters; for example `openai`, `pixverse`, or `kling`. |
 | `generation_method` | yes | How the result was generated, up to 100 characters; use a portable identifier such as `text-to-image`, `image-to-image`, `image-editing`, `text-to-video`, or `image-to-video`. |
 | `tags` | yes | Pipe-separated (`|`) labels for strengths, failures, or recurring patterns. Each tag is up to 80 characters; whitespace and duplicates are normalized only in the report. |
-| `source_reference` | no | Your source reference, up to 1,000 characters. It is not stored in PostgreSQL yet. |
+| `source_reference` | no | Your source reference, up to 1,000 characters. It is not stored in PostgreSQL in this version. |
 | `created_at` | no | ISO-8601 timestamp with timezone, for example `2026-01-01T12:00:00Z`. |
 
 The validator detects duplicate `external_id` values and duplicate normalized

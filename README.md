@@ -1,10 +1,126 @@
-# Alba OS Prompt Intelligence MVP
+# Alba OS Prompt Intelligence — Demo v0.1.0
 
 Alba OS is a local prompt-intelligence system for turning creative briefs into
 structured, evidence-backed recommendations for image and video generation
-platforms. Phase 1 will use approved examples, rejected examples as explicit
-counterexamples, a local Ollama model, and human review. It will not generate or
-analyze images.
+platforms. It retrieves approved examples and rejected failure patterns from a
+local library, generates one grounded recommendation, and pauses for an
+explicit human decision — approve, revise once, or reject. It does not
+generate or analyze images.
+
+> **Demo status:** this is a closed, transferable demo (v0.1.0-demo), not a
+> product. It runs only on `127.0.0.1`, has no authentication, CSRF
+> protection, TLS, or multi-user support, and must not be exposed to the
+> internet. See [What this demo does not do](#what-this-demo-does-not-do).
+
+> **Start here if you have never programmed:** read
+> [Getting started](docs/getting-started.md) first. It is the
+> step-by-step guide for first-time users: what Alba does, how to
+> install Git, uv, Docker Desktop, and Ollama, how to run the demo
+> with one command, how to try the three demo briefs, and how to fix
+> common problems — including the Windows PowerShell ExecutionPolicy
+> block. The short version below is for people who already have the
+> tools installed.
+
+## Demo in 5 minutes
+
+Prerequisites: [Git](https://git-scm.com/downloads),
+[uv](https://docs.astral.sh/uv/getting-started/installation/) (which
+manages Python 3.12), and
+[Docker Desktop](https://www.docker.com/products/docker-desktop/) or
+Docker Engine with Compose.
+[Ollama](https://ollama.com/download) is **only** needed for the
+real-model mode; the default fake mode needs no models at all. See
+[Getting started](docs/getting-started.md) for install checks and
+troubleshooting.
+
+```powershell
+# Windows (PowerShell)
+git clone -b experimental/demo-close https://github.com/zeedher-aisuites/alba-os-prompt-intelligence.git
+cd alba-os-prompt-intelligence
+.\scripts\demo.ps1
+```
+
+```bash
+# Linux / macOS
+git clone -b experimental/demo-close https://github.com/zeedher-aisuites/alba-os-prompt-intelligence.git
+cd alba-os-prompt-intelligence
+bash scripts/demo.sh
+```
+
+> The `-b experimental/demo-close` part matters: it downloads the
+> experimental demo branch. A plain `git clone` downloads `main`,
+> which does not have the demo-close work yet.
+
+That one command starts PostgreSQL, applies migrations, sets up the durable
+workflow checkpoints, seeds the demo data, rebuilds embeddings, and starts
+the web interface at <http://127.0.0.1:8000/>. Open it, go to
+**Create a workflow**, and use the three one-click demo briefs:
+
+| # | Demo brief | What to do | Expected result |
+| --- | --- | --- | --- |
+| 1 | Approve — cobalt host | Start it, review the grounded recommendation | Approved cobalt-host evidence is retrieved; approve it at human review |
+| 2 | Revise — station frames | Start it, then choose **Revise** once | The recommendation reaches human review; try feedback such as “Add more negative space without changing identity or movement.” |
+| 3 | Reject — no evidence | Start it, review the low-confidence result | Cobalt Lounge has no logo examples, so no approved evidence is retrieved and confidence is capped; a safe case to reject |
+
+Stop the server with Ctrl+C. To reset all demo data and start clean:
+
+```bash
+docker compose down --volumes
+```
+
+Then run the demo script again.
+
+### Fake mode vs real models
+
+- **Default — fake mode:** deterministic fake embeddings and a deterministic
+  fake recommendation provider. It proves the workflow, retrieval, and
+  human-review plumbing end to end. Fake results are **diagnostic only** and
+  must never be reported as EmbeddingGemma or Qwen quality.
+- **Real models — `--ollama`:** uses local `embeddinggemma:300m` for retrieval
+  and `qwen2.5:3b` for recommendations. Both models must already be installed
+  (`ollama pull embeddinggemma:300m` and `ollama pull qwen2.5:3b`); the demo
+  script never downloads them and fails with clear instructions if either
+  is missing.
+
+  ```powershell
+  .\scripts\demo.ps1 -Ollama
+  ```
+
+  ```bash
+  bash scripts/demo.sh --ollama
+  ```
+
+### Import your own corpus
+
+Prepare a CSV from `data/templates/prompt-corpus-v1.csv`, validate it, then
+import it into an existing project. The import is idempotent (re-imports are
+skipped by prompt text or by the recorded `external-id:<id>` tag) and never
+generates embeddings — run `rebuild_embeddings` afterwards.
+
+```powershell
+uv run python -m scripts.validate_prompt_corpus path\to\my-corpus.csv --strict
+uv run python -m scripts.import_prompt_corpus path\to\my-corpus.csv --project example-project --dry-run
+uv run python -m scripts.import_prompt_corpus path\to\my-corpus.csv --project example-project --strict
+```
+
+See [docs/data/prompt-corpus-v1.md](docs/data/prompt-corpus-v1.md) for the
+contract. `source_reference` and `created_at` have no storage column in this
+version and are reported as not stored.
+
+### What this demo does not do
+
+- No authentication, CSRF protection, TLS, multi-user isolation, or public
+  deployment. Do not bind it to `0.0.0.0`.
+- No image generation or analysis, no ANN index, no chunking, reranking, or
+  hybrid search, no multi-agent or autonomous behavior, no streaming, and no
+  telemetry. The workflow is deterministic, not an autonomous agent.
+- No automatic corpus import beyond the CSV importer above; the library
+  remains read-only in the web interface.
+- Checkpoint retention is manual: completed threads remain until an operator
+  deletes them or rebuilds the dedicated checkpoint schema.
+- The default password in `.env.example` (`alba_dev`) is a local-development
+  placeholder. Change `ALBA_POSTGRES_PASSWORD` in your own `.env` before
+  sharing the machine; `.env` is ignored by Git.
 
 ## Current scope
 
@@ -69,13 +185,19 @@ RecommendationService
 
 ## Requirements
 
-- `uv`
+- [Git](https://git-scm.com/downloads) (to clone the repository)
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
 - Python 3.12 (managed automatically by `uv` when unavailable)
-- Docker Desktop or Docker Engine with Compose
-- Ollama with the `embeddinggemma:300m` model for real Stage 2 backfill and
-  acceptance evaluation
-- Optional Ollama chat model `qwen2.5:3b` for real Stage 3 and Stage 4
-  validation. The fake recommendation provider requires no chat model.
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) or
+  Docker Engine with Compose
+- [Ollama](https://ollama.com/download) is optional: only the
+  `--ollama` demo mode needs it, with the `embeddinggemma:300m` model
+  for real retrieval and the `qwen2.5:3b` chat model for real
+  recommendations. The default fake mode needs no Ollama models. The
+  demo script never downloads models.
+
+For install steps, checks, and troubleshooting, see
+[Getting started](docs/getting-started.md).
 
 ## Setup
 
@@ -579,17 +701,19 @@ models to be installed. The dashboard remains renderable when a dependency is
 down and the versioned API returns a safe `503` when an unavailable dependency
 would make an operation impossible.
 
-The experience library at `/library` is read-only. It never imports, edits,
-approves, embeds, or deletes prompt examples. Prepare a spreadsheet corpus from
-`data/templates/prompt-corpus-v1.csv`, then inspect it without touching the
-database:
+The experience library at `/library` is read-only in the web interface. It
+never imports, edits, approves, embeds, or deletes prompt examples. To load
+your own corpus, use the CLI importer (see
+[Import your own corpus](#import-your-own-corpus)). Prepare a spreadsheet
+corpus from `data/templates/prompt-corpus-v1.csv`, then inspect it without
+touching the database:
 
 ```powershell
 uv run python -m scripts.validate_prompt_corpus path\to\my-corpus.csv --strict
 ```
 
 Read [the corpus contract](docs/data/prompt-corpus-v1.md) before preparing real
-data. The template is an interchange contract, not an automatic importer.
+data.
 
 `/docs` uses a checked-in copy of Swagger UI 5.17.14 under
 `app/web/static/swagger-ui/5.17.14`. It loads `/openapi.json` and every

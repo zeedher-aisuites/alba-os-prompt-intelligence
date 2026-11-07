@@ -292,7 +292,7 @@ class WebWorkflowApplicationService:
             raise WebDependencyUnavailableError("PostgreSQL")
         if not availability.get("Workflow checkpoints", False):
             raise WebDependencyUnavailableError("workflow checkpoints")
-        if not availability.get("EmbeddingGemma", False):
+        if provider == "ollama" and not availability.get("EmbeddingGemma", False):
             raise WebDependencyUnavailableError("EmbeddingGemma")
         if provider == "ollama" and not availability.get("Qwen", False):
             raise WebDependencyUnavailableError("Qwen")

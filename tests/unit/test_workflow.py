@@ -233,3 +233,63 @@ async def test_revision_feedback_is_delimited_as_untrusted_data() -> None:
     assert '"feedback_is_untrusted_task_data": true' in revised.user_prompt
     assert revised.positive_evidence == context.positive_evidence
     assert revised.failure_evidence == context.failure_evidence
+
+
+@pytest.mark.asyncio
+async def test_workflow_factory_pairs_embedding_provider_with_demo_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fake workflow must not require Ollama; an ollama workflow must use it.
+
+    The graph compiler is stubbed out because this test only checks provider
+    wiring, not graph execution. The checkpointer is never touched here.
+    """
+    from typing import cast
+
+    from app.core.config import Settings
+    from app.db.session import Database
+    from app.embeddings.factory import EmbeddingProviderKind
+    from app.embeddings.protocol import EmbeddingProvider
+    from app.workflow.factory import create_workflow_service
+    from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+    def stub_compile(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        return object()
+
+    monkeypatch.setattr(
+        "app.workflow.service.compile_recommendation_workflow",
+        stub_compile,
+    )
+    requested: list[EmbeddingProviderKind] = []
+
+    def recording_provider(
+        settings: Settings, provider_kind: EmbeddingProviderKind
+    ) -> EmbeddingProvider:
+        from app.embeddings.factory import create_embedding_provider
+
+        requested.append(provider_kind)
+        return create_embedding_provider(settings, provider_kind)
+
+    monkeypatch.setattr(
+        "app.workflow.factory.create_embedding_provider",
+        recording_provider,
+    )
+    settings = Settings()
+    database = Database(settings)
+    try:
+        create_workflow_service(
+            settings,
+            database,
+            cast(AsyncPostgresSaver, object()),
+            provider_kind="fake",
+        )
+        create_workflow_service(
+            settings,
+            database,
+            cast(AsyncPostgresSaver, object()),
+            provider_kind="ollama",
+        )
+        assert requested == ["fake", "ollama"]
+    finally:
+        await database.dispose()
